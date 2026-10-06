@@ -1,0 +1,11 @@
+{
+  "name": "decoration-web-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix decoration-dashboard run dev",
+    "build": "npm --prefix decoration-dashboard run build",
+    "preview": "npm --prefix decoration-dashboard run preview",
+    "share": "npm --prefix decoration-dashboard run share"
+  }
+}
