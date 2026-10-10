@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { memo, useEffect, useState, useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Building2,
@@ -18,6 +18,7 @@ import {
 } from "@/lib/enquiries";
 import {
   getSharedPublicDecoration,
+  getSetupsCacheVersion,
   loadStoredSetups,
   INITIAL_DECORATION_SETUPS,
 } from "@/lib/decoration-setups";
@@ -47,7 +48,23 @@ import {
  *    with a badge on the photo: "Yours" (green) or the other company's name (amber),
  *    or "Unknown" (grey) if unowned.
  */
-export function EnquiryExtraDetails({ enquiry }: { enquiry: EnquiryItem }) {
+export const EnquiryExtraDetails = memo(EnquiryExtraDetailsView);
+
+// Building a card's item merges the snapshot with the catalogue entry, which
+// touches multi-MB photo strings; reuse it until the snapshot or catalogue changes.
+const cardItemCache = new WeakMap<EnquiryRequestedDecoration, { v: number; item: EnquiryRequestedDecoration }>();
+
+function cardItemFor(d: EnquiryRequestedDecoration): EnquiryRequestedDecoration {
+  const v = getSetupsCacheVersion();
+  const hit = cardItemCache.get(d);
+  if (hit && hit.v === v) return hit.item;
+  const shared = getSharedPublicDecoration(d.decorationId || d.id, d);
+  const item = shared ? buildDecorationSnapshot(d, shared) : d;
+  cardItemCache.set(d, { v, item });
+  return item;
+}
+
+function EnquiryExtraDetailsView({ enquiry }: { enquiry: EnquiryItem }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedDecoration, setSelectedDecoration] = useState<EnquiryRequestedDecoration | null>(null);
   const [activePhotoUrl, setActivePhotoUrl] = useState<string | null>(null);
@@ -211,9 +228,7 @@ export function EnquiryExtraDetails({ enquiry }: { enquiry: EnquiryItem }) {
   );
 
   const renderDecorationCard = (d: EnquiryRequestedDecoration) => {
-    const decId = d.decorationId || d.id;
-    const shared = getSharedPublicDecoration(decId, d);
-    const item = shared ? buildDecorationSnapshot(d, shared) : d;
+    const item = cardItemFor(d);
 
     const itemCompanyId = item.companyId || item.ownerCompanyId;
     const isYours = Boolean(itemCompanyId && isMyCompanyId(itemCompanyId));

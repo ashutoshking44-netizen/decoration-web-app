@@ -1,7 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { type BookedClient, type ClientCeremonyItem, upsertStoredBookedClient } from "./clients";
-import { fetchEnquiriesFromSupabase, upsertEnquiryInSupabase, subscribeToEnquiriesRealtime } from "./supabase-service";
+import { upsertEnquiryInSupabase } from "./supabase-service";
+import {
+  getEnquiryLoadState,
+  loadEnquiryList,
+  retainEnquirySync,
+  subscribeEnquiryLoadState,
+} from "./enquiry-sync";
 import { getCompanyNameById } from "./current-company";
 import { enquiryRepository, ENQUIRY_STORAGE_ERROR_EVENT, type StorageErrorDetail } from "./enquiry-repository";
 import { INITIAL_ENQUIRIES } from "./enquiries-sample-data";
@@ -100,6 +106,13 @@ export interface EnquiryRequestedDecoration {
  * Only copies fields the company has actually filled in; skips empty ones.
  * Preserves all public fields and category-specific specs.
  */
+/** JSON.stringify replacer that shortens data: URLs to a size label. */
+function abbreviateDataUrls(_key: string, value: unknown): unknown {
+  return typeof value === "string" && value.startsWith("data:")
+    ? `${value.slice(0, value.indexOf(",") + 1)}… (${Math.round(value.length / 1024)} KB)`
+    : value;
+}
+
 export function buildDecorationSnapshot(dec: any, catalogFallback?: any): EnquiryRequestedDecoration {
   const fallback = catalogFallback || {};
   const primary = dec || {};
@@ -292,7 +305,9 @@ export function buildDecorationSnapshot(dec: any, catalogFallback?: any): Enquir
   };
 
   // Log saved snapshot item to console as required
-  console.log("[Enquiry Snapshot Saved Item]:", JSON.stringify(snapshot, null, 2));
+  // Photos are often multi-MB base64 strings; printing them in full ran on every
+  // card render and dominated page load time, so they are abbreviated here.
+  console.log("[Enquiry Snapshot Saved Item]:", JSON.stringify(snapshot, abbreviateDataUrls, 2));
 
   return snapshot;
 }
@@ -369,6 +384,11 @@ export interface EnquiryItem {
 
   // Sample lead flag to isolate demo leads from real client enquiries
   isSample?: boolean | undefined;
+
+  /** Supabase row version (`updated_at`) this copy reflects. Unset for local-only enquiries. */
+  updated_at?: string | undefined;
+  /** Row version the held `events`/photos were loaded from; differs from updated_at when stale. */
+  details_updated_at?: string | undefined;
 }
 
 export { INITIAL_ENQUIRIES };
@@ -427,41 +447,23 @@ export function saveStoredEnquiries(enquiries: EnquiryItem[]): boolean {
 
 export function useEnquiriesStore() {
   const [enquiries, setEnquiries] = useState<EnquiryItem[]>(() => enquiryRepository.getAll());
-  const [isLoaded, setIsLoaded] = useState(false);
+  const loadState = useSyncExternalStore(subscribeEnquiryLoadState, getEnquiryLoadState, getEnquiryLoadState);
+  // True once the first Supabase load has finished, successfully or not.
+  const isLoaded = loadState.status === "ready" || loadState.status === "error";
 
   useEffect(() => {
-    // 1. Initial sync from Supabase (never clobber local data if Supabase is empty)
-    fetchEnquiriesFromSupabase()
-      .then((data) => {
-        if (data && data.length > 0) {
-          enquiryRepository.mergeRemote(data);
-          setEnquiries(enquiryRepository.getAll());
-        }
-        setIsLoaded(true);
-      })
-      .catch((err) => {
-        console.warn("[useEnquiriesStore] Supabase fetch error:", err);
-        setIsLoaded(true);
-      });
+    // 1. Light list from Supabase + realtime changes (one shared request/channel)
+    const release = retainEnquirySync();
 
-    // 2. Shared Realtime changes from Supabase
-    const unsubscribe = subscribeToEnquiriesRealtime(() => {
-      fetchEnquiriesFromSupabase().then((data) => {
-        if (data && data.length > 0) {
-          enquiryRepository.mergeRemote(data);
-          setEnquiries(enquiryRepository.getAll());
-        }
-      });
-    });
-
-    // 3. New enquiries arriving from client site or sync events
+    // 2. Store changes: list merges, loaded details, realtime rows, client form
     const onSynced = () => {
       setEnquiries(enquiryRepository.getAll());
     };
     window.addEventListener("enquiries-synced", onSynced);
     window.addEventListener("storage", onSynced);
+    onSynced(); // pick up anything merged before this listener was attached
 
-    // 4. Storage error notification
+    // 3. Storage error notification
     const onStorageError = (e: Event) => {
       const detail = (e as CustomEvent<StorageErrorDetail>).detail;
       toast.warning(detail?.message || "Storage warning");
@@ -472,94 +474,65 @@ export function useEnquiriesStore() {
       window.removeEventListener("enquiries-synced", onSynced);
       window.removeEventListener("storage", onSynced);
       window.removeEventListener(ENQUIRY_STORAGE_ERROR_EVENT, onStorageError as EventListener);
-      unsubscribe();
+      release();
     };
   }, []);
 
-  const triggerPrompt = (id: string) => {
-    const updated = enquiries.map((e) =>
-      e.id === id ? { ...e, prompt_state: "asking_quotation" as const } : e
-    );
-    setEnquiries(updated);
+  /**
+   * Applies a change to one enquiry, starting from the store's latest copy (not
+   * this render's state, which may predate a merge or loaded details), then
+   * saves it locally and to Supabase.
+   */
+  const updateEnquiry = (id: string, change: (e: EnquiryItem) => EnquiryItem) => {
+    const updated = enquiryRepository.getAll(true).map((e) => (e.id === id ? change(e) : e));
     saveStoredEnquiries(updated);
+    setEnquiries(enquiryRepository.getAll());
     const target = updated.find((e) => e.id === id);
     if (target) void upsertEnquiryInSupabase(target);
+  };
+
+  const triggerPrompt = (id: string) => {
+    updateEnquiry(id, (e) => ({ ...e, prompt_state: "asking_quotation" as const }));
   };
 
   const cancelPrompt = (id: string) => {
-    const updated = enquiries.map((e) =>
-      e.id === id ? { ...e, prompt_state: "idle" as const } : e
-    );
-    setEnquiries(updated);
-    saveStoredEnquiries(updated);
-    const target = updated.find((e) => e.id === id);
-    if (target) void upsertEnquiryInSupabase(target);
+    updateEnquiry(id, (e) => ({ ...e, prompt_state: "idle" as const }));
   };
 
   const markInterestedLater = (id: string) => {
-    const updated = enquiries.map((e) =>
-      e.id === id
-        ? {
-            ...e,
-            status: "interested" as const,
-            prompt_state: "later" as const,
-            responded_at: new Date().toISOString(),
-          }
-        : e
-    );
-    setEnquiries(updated);
-    saveStoredEnquiries(updated);
-    const target = updated.find((e) => e.id === id);
-    if (target) void upsertEnquiryInSupabase(target);
+    updateEnquiry(id, (e) => ({
+      ...e,
+      status: "interested" as const,
+      prompt_state: "later" as const,
+      responded_at: new Date().toISOString(),
+    }));
   };
 
   const markNotAvailable = (id: string, reason?: string) => {
-    const updated = enquiries.map((e) =>
-      e.id === id
-        ? {
-            ...e,
-            status: "not_available" as const,
-            prompt_state: "idle" as const,
-            decline_reason: reason || "Date conflict / Studio unavailable",
-            responded_at: new Date().toISOString(),
-          }
-        : e
-    );
-    setEnquiries(updated);
-    saveStoredEnquiries(updated);
-    const target = updated.find((e) => e.id === id);
-    if (target) void upsertEnquiryInSupabase(target);
+    updateEnquiry(id, (e) => ({
+      ...e,
+      status: "not_available" as const,
+      prompt_state: "idle" as const,
+      decline_reason: reason || "Date conflict / Studio unavailable",
+      responded_at: new Date().toISOString(),
+    }));
   };
 
   const savePrivateNote = (id: string, note: string) => {
-    const updated = enquiries.map((e) =>
-      e.id === id ? { ...e, private_note: note } : e
-    );
-    setEnquiries(updated);
-    saveStoredEnquiries(updated);
-    const target = updated.find((e) => e.id === id);
-    if (target) void upsertEnquiryInSupabase(target);
+    updateEnquiry(id, (e) => ({ ...e, private_note: note }));
   };
 
   const restoreEnquiry = (id: string) => {
-    const updated = enquiries.map((e) =>
-      e.id === id
-        ? {
-            ...e,
-            status: "unreviewed" as const,
-            prompt_state: "idle" as const,
-            decline_reason: undefined,
-          }
-        : e
-    );
-    setEnquiries(updated);
-    saveStoredEnquiries(updated);
-    const target = updated.find((e) => e.id === id);
-    if (target) void upsertEnquiryInSupabase(target);
+    updateEnquiry(id, (e) => ({
+      ...e,
+      status: "unreviewed" as const,
+      prompt_state: "idle" as const,
+      decline_reason: undefined,
+    }));
   };
 
   const createQuotationForEnquiry = (id: string): BookedClient | null => {
-    const enquiry = enquiries.find((e) => e.id === id);
+    const enquiry = enquiryRepository.getById(id);
     if (!enquiry) return null;
 
     // Build matching BookedClient record
@@ -608,20 +581,12 @@ export function useEnquiriesStore() {
     upsertStoredBookedClient(newClient);
 
     // Update enquiry state
-    const updated = enquiries.map((e) =>
-      e.id === id
-        ? {
-            ...e,
-            status: "quotation_created" as const,
-            prompt_state: "idle" as const,
-            responded_at: new Date().toISOString(),
-          }
-        : e
-    );
-    setEnquiries(updated);
-    saveStoredEnquiries(updated);
-    const target = updated.find((e) => e.id === id);
-    if (target) void upsertEnquiryInSupabase(target);
+    updateEnquiry(id, (e) => ({
+      ...e,
+      status: "quotation_created" as const,
+      prompt_state: "idle" as const,
+      responded_at: new Date().toISOString(),
+    }));
 
     return newClient;
   };
@@ -708,6 +673,8 @@ export function useEnquiriesStore() {
   return {
     enquiries,
     isLoaded,
+    loadState,
+    retryLoad: loadEnquiryList,
     metrics,
     triggerPrompt,
     cancelPrompt,

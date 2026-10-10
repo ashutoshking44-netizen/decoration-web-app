@@ -1,4 +1,4 @@
-import { useState, useMemo, ComponentType } from "react";
+import { useState, useMemo, useEffect, ComponentType } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -71,6 +71,7 @@ import {
   type EnquiryItem,
   type EnquirySource,
 } from "@/lib/enquiries";
+import { ensureEnquiryDetails, type EnquiryLoadState } from "@/lib/enquiry-sync";
 import { useBookedClientsStore, type BookedClient, type ClientCeremonyItem } from "@/lib/clients";
 import { ProposalDispatchModal } from "./proposal-dispatch-modal";
 import { ShareEnquiryFormButton } from "./share-enquiry-form-button";
@@ -220,6 +221,8 @@ export function EnquiriesTriagePage() {
   const {
     enquiries,
     isLoaded,
+    loadState,
+    retryLoad,
     triggerPrompt,
     cancelPrompt,
     markInterestedLater,
@@ -285,8 +288,10 @@ export function EnquiriesTriagePage() {
   };
 
   // Launch quotation builder
-  const handleLaunchQuotation = (enquiry: EnquiryItem) => {
+  const handleLaunchQuotation = async (enquiry: EnquiryItem) => {
     toast.info(`Setting up quotation for ${enquiry.client_name}...`);
+    // The quotation is built from the picked decorations, so load them first.
+    await ensureEnquiryDetails([enquiry.id], { priority: true });
     const client = createQuotationForEnquiry(enquiry.id);
     if (client) {
       navigate({
@@ -461,6 +466,23 @@ export function EnquiriesTriagePage() {
     });
   }, [selectedStage, enquiries, clients, searchQuery, sourceFilter]);
 
+  // The list loads without event/photo data; load it for the cards on screen.
+  const visibleEnquiryIds = currentStageRecords
+    .filter((r) => r.type === "enquiry")
+    .map((r) => r.data.id)
+    .join(",");
+  useEffect(() => {
+    if (visibleEnquiryIds) void ensureEnquiryDetails(visibleEnquiryIds.split(","));
+  }, [visibleEnquiryIds]);
+
+  // Counts are only trustworthy once Supabase has answered; until then show a placeholder instead of 0.
+  const countPlaceholder =
+    loadState.status === "loading" || loadState.status === "idle"
+      ? "…"
+      : loadState.status === "error"
+        ? "–"
+        : null;
+
   // Group stages by category for the sidebar
   const pipelineStagesList = useMemo(
     () => PIPELINE_STAGES.filter((s) => s.category === "PIPELINE"),
@@ -567,6 +589,8 @@ export function EnquiriesTriagePage() {
           <SidebarContent
             selectedStage={selectedStage}
             stageCounts={stageCounts}
+
+            countPlaceholder={countPlaceholder}
             pipelineStagesList={pipelineStagesList}
             otherStagesList={otherStagesList}
             onSelectStage={(id) => setSelectedStage(id)}
@@ -604,6 +628,8 @@ export function EnquiriesTriagePage() {
                 <SidebarContent
                   selectedStage={selectedStage}
                   stageCounts={stageCounts}
+
+                  countPlaceholder={countPlaceholder}
                   pipelineStagesList={pipelineStagesList}
                   otherStagesList={otherStagesList}
                   onSelectStage={(id) => {
@@ -619,6 +645,11 @@ export function EnquiriesTriagePage() {
 
         {/* ── 3. Main Content Area (Scrolls independently) ── */}
         <main className="flex-1 h-full overflow-y-auto min-w-0 p-4 sm:p-6 lg:p-8">
+          {loadState.status === "error" &&
+            (selectedStage === "quotations_made" || currentStageRecords.length > 0) && (
+              <EnquiriesLoadNotice state={loadState} onRetry={retryLoad} compact />
+            )}
+
           {/* ── Quotations Made: Card Grid View ── */}
           {selectedStage === "quotations_made" ? (
             <QuotationsMadeGrid
@@ -638,6 +669,9 @@ export function EnquiriesTriagePage() {
               }}
               newEnquiriesCount={stageCounts.new_enquiries}
             />
+          ) : currentStageRecords.length === 0 && loadState.status !== "ready" ? (
+            /* Not confirmed empty yet: still loading, or the load failed */
+            <EnquiriesLoadNotice state={loadState} onRetry={retryLoad} />
           ) : currentStageRecords.length === 0 ? (
             /* ── Conditional Empty State Card ── */
             <div className="rounded-2xl border border-[#E7DCD6] bg-white p-12 sm:p-16 text-center shadow-soft max-w-xl mx-auto my-6">
@@ -1498,9 +1532,12 @@ function SidebarContent({
   otherStagesList,
   onSelectStage,
   resetEnquiries,
+  countPlaceholder,
 }: {
   selectedStage: PipelineStageId;
   stageCounts: Record<PipelineStageId, number>;
+  /** Shown instead of a 0 count until the enquiries have loaded. */
+  countPlaceholder: string | null;
   pipelineStagesList: PipelineStageConfig[];
   otherStagesList: PipelineStageConfig[];
   onSelectStage: (id: PipelineStageId) => void;
@@ -1558,7 +1595,7 @@ function SidebarContent({
                         : "text-stone-400 group-hover:text-stone-600 font-normal"
                     )}
                   >
-                    {count}
+                    {count === 0 && countPlaceholder ? countPlaceholder : count}
                   </span>
                 </button>
               );
@@ -1615,7 +1652,7 @@ function SidebarContent({
                         : "text-stone-400 group-hover:text-stone-600 font-normal"
                     )}
                   >
-                    {count}
+                    {count === 0 && countPlaceholder ? countPlaceholder : count}
                   </span>
                 </button>
               );
@@ -1645,6 +1682,69 @@ function SidebarContent({
 }
 
 // ── Branded Source Badge component ──
+// ── Enquiry load feedback (loading / failed + retry) ──
+function EnquiriesLoadNotice({
+  state,
+  onRetry,
+  compact = false,
+}: {
+  state: EnquiryLoadState;
+  onRetry: () => void;
+  compact?: boolean;
+}) {
+  const failed = state.status === "error";
+  const retrying = !failed && (state.attempt ?? 1) > 1;
+
+  if (compact) {
+    return (
+      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+        <AlertTriangle className="size-4 shrink-0 text-amber-600" />
+        <span className="flex-1 min-w-0">
+          Couldn't refresh enquiries. {state.error} Showing the last saved copy.
+        </span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold text-amber-900 hover:bg-amber-100 transition-colors cursor-pointer"
+        >
+          <RotateCcw className="size-3.5" />
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-[#E7DCD6] bg-white p-12 sm:p-16 text-center shadow-soft max-w-xl mx-auto my-6">
+      <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-[#FFF0F3] border border-[#FDC2CD] text-[#D6415C] mb-4 shadow-2xs">
+        {failed ? <AlertTriangle className="size-8 stroke-[1.5]" /> : <Loader2 className="size-8 stroke-[1.5] animate-spin" />}
+      </div>
+      <h3 className="font-display text-xl sm:text-2xl font-bold text-[#2B2320]">
+        {failed ? "Couldn't load enquiries" : "Loading enquiries…"}
+      </h3>
+      <p className="text-xs sm:text-sm text-[#7A6B66] mt-2 max-w-md mx-auto leading-relaxed">
+        {failed
+          ? `${state.error ?? ""} Your enquiries are safe — try again.`
+          : retrying
+            ? `Still working on it (attempt ${state.attempt})…`
+            : "Fetching the latest enquiries."}
+      </p>
+      {failed && (
+        <div className="mt-6 flex justify-center">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#E8546F] to-[#D6415C] px-4 py-2 text-xs font-bold text-white shadow-xs hover:from-[#D6415C] hover:to-[#C3334E] transition-all cursor-pointer"
+          >
+            <RotateCcw className="size-3.5" />
+            <span>Retry</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SourceBadge({ source }: { source: EnquirySource }) {
   switch (source) {
     case "Instagram":

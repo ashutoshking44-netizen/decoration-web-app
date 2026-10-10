@@ -28,8 +28,10 @@ import {
   Share2,
   Loader2,
   Check,
+  ImagePlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useCompanyProfile } from "@/lib/company-profile";
 import { EVENT_TYPE_OPTIONS } from "@/lib/company-profile";
@@ -75,6 +77,17 @@ import {
 } from "@/lib/event-schedule";
 import { DecorationCatalogCard } from "./decoration-catalog-card";
 import { MultiCeremonyCardSelector, getCeremonyCardsList } from "./multi-ceremony-card-selector";
+import { EventDesignMatchStep } from "./event-design-match-step";
+import {
+  availabilityOf,
+  emptyDesignMatch,
+  isUploadedReference,
+  matchedFromCatalog,
+  pickImage,
+  referencePickKey,
+  type DesignMatchAnswer,
+  type DesignPick,
+} from "@/lib/design-match";
 import { ProposalDispatchModal } from "./proposal-dispatch-modal";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -215,6 +228,59 @@ export function resolvePickedDecoration(
     welcomeBoardSpecs: d.welcomeBoardSpecs,
     createdAt: new Date().toISOString(),
   };
+}
+
+/**
+ * An event's selected cards from the client's picks, with each reference design
+ * (another company's) replaced by the catalogue design chosen for it on Step 4.
+ * A reference answered with an uploaded screenshot has no card: it is shown in
+ * Pricing as an unpriced design reference instead.
+ */
+export function buildEventCardsWithMatches(
+  rawPicks: any[],
+  catalog: DecorationSetupItem[],
+  eventIdx: number,
+  answers: Record<string, DesignMatchAnswer> | undefined
+): DecorationSetupItem[] {
+  const cards: DecorationSetupItem[] = [];
+  rawPicks.forEach((d, pickIdx) => {
+    const a = answers?.[referencePickKey(d, pickIdx)];
+    if (isUploadedReference(a) && !isDecorationMine(d, catalog)) return;
+    const matched =
+      a && matchedFromCatalog(a) && !isDecorationMine(d, catalog)
+        ? findDecorationInCatalog(a.matchedSetupId, catalog)
+        : undefined;
+    if (matched) {
+      // Already in this event (e.g. the client also picked it): don't price it twice.
+      if (!cards.some((c) => c.id === matched.id)) cards.push(matched);
+      return;
+    }
+    cards.push(resolvePickedDecoration(d, catalog, eventIdx, pickIdx));
+  });
+  return cards;
+}
+
+/** The client's picks for an event, split into our designs and other companies' references. */
+export function splitEventDesignPicks(
+  rawPicks: any[],
+  catalog: DecorationSetupItem[]
+): { ours: DesignPick[]; references: DesignPick[] } {
+  const ours: DesignPick[] = [];
+  const references: DesignPick[] = [];
+  rawPicks.forEach((d, pickIndex) => {
+    const mine = isDecorationMine(d, catalog);
+    const found = mine ? findDecorationInCatalog(d.decorationId || d.id, catalog) : undefined;
+    const pick: DesignPick = {
+      key: referencePickKey(d, pickIndex),
+      pickIndex,
+      name: String(d.name || d.title || found?.name || "Decoration").trim(),
+      category: String(d.category || found?.category || "").trim(),
+      image: pickImage(d) || found?.imageUrl || found?.gallery?.[0],
+      companyName: d.companyName || d.ownerCompanyName || undefined,
+    };
+    (mine ? ours : references).push(pick);
+  });
+  return { ours, references };
 }
 
 export function getCardsForEvent(
@@ -1004,6 +1070,9 @@ export function QuotationStudioPage({
   const [enquiryPhotos, setEnquiryPhotos] = useState<Record<string, string[]>>({});
   const [forceStep4EventIds, setForceStep4EventIds] = useState<Set<string>>(new Set());
   const [enquiryEventPicks, setEnquiryEventPicks] = useState<Record<string, any[]>>({});
+  // Step 4: how each client reference design (another company's) is fulfilled,
+  // per event id → reference key. Saved with the quotation's ceremonies.
+  const [designMatches, setDesignMatches] = useState<Record<string, Record<string, DesignMatchAnswer>>>({});
 
   useEffect(() => {
     if (!clientId || enquiryApplied.current) return;
@@ -1155,6 +1224,26 @@ export function QuotationStudioPage({
 
     if (entries.length === 0) return;
 
+    // Step 4 answers saved with an earlier version of this quotation: restore
+    // them, and keep each chosen catalogue design in its event's cards.
+    const restoredMatches: Record<string, Record<string, DesignMatchAnswer>> = {};
+    if (enq?.events?.length && existingClient?.ceremonies?.length) {
+      schedule.forEach((s, i) => {
+        const saved = existingClient.ceremonies!.find((c) => c.id === s.id) ?? existingClient.ceremonies![i];
+        const list = saved?.designMatches;
+        if (!Array.isArray(list) || list.length === 0) return;
+        const byKey = Object.fromEntries(list.map((m) => [m.referenceKey, m]));
+        restoredMatches[s.id] = byKey;
+        const rebuilt = buildEventCardsWithMatches(rawPicksMap[s.id] ?? [], allCatalog, i, byKey);
+        // Empty when every pick is an uploaded reference (still replaces the priced cards).
+        if (rebuilt.length > 0 || (rawPicksMap[s.id]?.length ?? 0) > 0) {
+          cardsMap[s.id] = rebuilt;
+          cardsMap[`event-${i}`] = rebuilt;
+          cardsMap[`c-${i + 1}`] = rebuilt;
+        }
+      });
+    }
+
     enquiryApplied.current = true;
     datePrefilled.current = true;
     setDateEntries(entries);
@@ -1170,6 +1259,10 @@ export function QuotationStudioPage({
       setMultiCeremonyCards((prev) => ({ ...prev, ...cardsMap }));
     }
     setEnquiryEventPicks(rawPicksMap);
+    if (Object.keys(restoredMatches).length > 0) {
+      setDesignMatches(restoredMatches);
+      lateMatchesRestored.current = true;
+    }
 
     if (firstFoundSetup) {
       setSetup(firstFoundSetup);
@@ -1506,6 +1599,41 @@ export function QuotationStudioPage({
     );
   }, [selectedCatalogItems]);
 
+  // Step 4 references answered with an uploaded screenshot: shown in Item & Scope
+  // as custom design references (one per reference, per event). Not priced until
+  // a rate is entered by hand; only an entered rate counts towards the total.
+  const designReferenceRows = useMemo(
+    () =>
+      eventSchedule.flatMap((ev) =>
+        Object.values(designMatches[ev.id] ?? {})
+          .filter(isUploadedReference)
+          .map((a) => ({
+            id: `${ev.id}-ref-${a.referenceKey}`,
+            ceremonyId: ev.id,
+            ceremonyName: ev.name,
+            ceremonyDate: ev.dateBs || ev.dateAd || "",
+            answer: a,
+          }))
+      ),
+    [eventSchedule, designMatches]
+  );
+  const [referencePreview, setReferencePreview] = useState<{ src: string; title: string } | null>(null);
+
+  const designReferencesSubtotal = useMemo(
+    () => designReferenceRows.reduce((sum, r) => sum + (Number(r.answer.rate) || 0), 0),
+    [designReferenceRows]
+  );
+
+  /** Rate typed for a custom design reference; an empty field means "Not priced". */
+  const handleUpdateDesignReferenceRate = (ceremonyId: string, referenceKey: string, raw: string) => {
+    const rate = raw.trim() === "" ? undefined : Math.max(0, Number(raw) || 0);
+    setDesignMatches((prev) => {
+      const current = prev[ceremonyId]?.[referenceKey];
+      if (!current) return prev;
+      return { ...prev, [ceremonyId]: { ...prev[ceremonyId], [referenceKey]: { ...current, rate } } };
+    });
+  };
+
   const handleUpdateCatalogItemRate = (key: string, rate: number) => {
     setCatalogItemOverrides((prev) => ({
       ...prev,
@@ -1552,10 +1680,19 @@ export function QuotationStudioPage({
 
   const subtotalBeforeDiscount = useMemo(() => {
     if (selectedCatalogItems.length > 0) {
-      return catalogSubtotal + addOnsSubtotal;
+      return catalogSubtotal + designReferencesSubtotal + addOnsSubtotal;
     }
+    // Only design references: just their entered rates, no default base setup price.
+    if (designReferenceRows.length > 0) return designReferencesSubtotal + addOnsSubtotal;
     return (Number(basePrice) || 0) + addOnsSubtotal;
-  }, [selectedCatalogItems.length, catalogSubtotal, addOnsSubtotal, basePrice]);
+  }, [
+    selectedCatalogItems.length,
+    catalogSubtotal,
+    designReferencesSubtotal,
+    addOnsSubtotal,
+    basePrice,
+    designReferenceRows.length,
+  ]);
 
   const grandTotal = useMemo(() => {
     return Math.max(0, subtotalBeforeDiscount - (Number(discountAmount) || 0));
@@ -1743,6 +1880,133 @@ export function QuotationStudioPage({
     }
   };
 
+  /** Base price from every event's selected cards (same formula the catalogue step uses). */
+  const sumCardPrices = (cardsMap: Record<string, DecorationSetupItem[]>) =>
+    Object.values(cardsMap)
+      .flat()
+      .reduce(
+        (s, c) =>
+          s +
+          (c
+            ? Number(
+                c.total_price ||
+                  c.stageSpecs?.price ||
+                  c.mandapSpecs?.price ||
+                  c.backdropSpecs?.price ||
+                  c.entranceGateSpecs?.price ||
+                  45000
+              )
+            : 0),
+        0
+      );
+
+  /** "Save & Continue" on an event step (catalogue step and design-match step alike). */
+  const continueFromEventSetup = () => {
+    // Synchronize base price from assigned cards
+    const sum = sumCardPrices(multiCeremonyCards);
+    if (sum > 0) {
+      setBasePrice(sum);
+    }
+    if (forceStep4EventIds.has(currentStep.eventId || "")) {
+      const pricing = dynamicSteps.find((s) => s.type === "pricing");
+      if (pricing) {
+        setWizardStep(pricing.stepNumber);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+    }
+    goNext();
+  };
+
+  // ── Step 4 design matching (events where the client picked another company's design) ──
+  const activeEventDesign = useMemo(() => {
+    if (currentStep.type !== "event_setup") return null;
+    const idx = currentStep.eventIndex ?? 0;
+    const ev = eventSchedule[idx];
+    if (!ev) return null;
+    const allCatalog = catalogSetups.length > 0 ? catalogSetups : loadStoredSetups();
+    const rawPicks: any[] =
+      enquiryEventPicks[ev.id] ?? enquiryEventPicks[`event-${idx}`] ?? enquiryEventPicks[`c-${idx + 1}`] ?? [];
+    const { ours, references } = splitEventDesignPicks(rawPicks, allCatalog);
+    // Our own available (live) designs, offered when matching a reference.
+    const ourCatalog = allCatalog.filter((s) => isMyCompanyId(s.companyId) && (!s.status || s.status === "Live"));
+    return { ev, idx, rawPicks, ours, references, allCatalog, ourCatalog };
+  }, [currentStep.type, currentStep.eventIndex, eventSchedule, enquiryEventPicks, catalogSetups]);
+
+  // Start an (empty) answer for every reference design on the event being configured.
+  useEffect(() => {
+    if (!activeEventDesign || activeEventDesign.references.length === 0) return;
+    const { ev, idx, rawPicks, references, allCatalog } = activeEventDesign;
+    setDesignMatches((prev) => {
+      const forEvent = prev[ev.id] ?? {};
+      const missing = references.filter((r) => !forEvent[r.key]);
+      if (missing.length === 0) return prev;
+      const next = { ...forEvent };
+      missing.forEach((r) => {
+        const refCard = resolvePickedDecoration(rawPicks[r.pickIndex], allCatalog, idx, r.pickIndex);
+        next[r.key] = emptyDesignMatch(r, refCard.id);
+      });
+      return { ...prev, [ev.id]: next };
+    });
+  }, [activeEventDesign]);
+
+  // Saved Step 4 answers when the saved quotation (booked client) arrives after
+  // the enquiry was applied, e.g. still loading from Supabase on a fresh page.
+  // Events already being answered here are left untouched.
+  const lateMatchesRestored = useRef(false);
+  useEffect(() => {
+    if (lateMatchesRestored.current || !clientId || !enquiryApplied.current) return;
+    const existing = bookedClients.find((c) => c.id === clientId);
+    if (!existing?.ceremonies?.length) return;
+    const allCatalog = catalogSetups.length > 0 ? catalogSetups : loadStoredSetups();
+    const restored: Record<string, Record<string, DesignMatchAnswer>> = {};
+    const cardUpdates: Record<string, DecorationSetupItem[]> = {};
+    eventSchedule.forEach((ev, i) => {
+      if (Object.values(designMatches[ev.id] ?? {}).some((m) => availabilityOf(m))) return;
+      const saved = existing.ceremonies!.find((c) => c.id === ev.id) ?? existing.ceremonies![i];
+      const list = saved?.designMatches;
+      if (!Array.isArray(list) || list.length === 0) return;
+      const byKey = Object.fromEntries(list.map((m) => [m.referenceKey, m]));
+      restored[ev.id] = byKey;
+      const rawPicks = enquiryEventPicks[ev.id] ?? [];
+      const cards = buildEventCardsWithMatches(rawPicks, allCatalog, i, byKey);
+      if (cards.length > 0 || rawPicks.length > 0) {
+        cardUpdates[ev.id] = cards;
+        cardUpdates[`event-${i}`] = cards;
+        cardUpdates[`c-${i + 1}`] = cards;
+      }
+    });
+    if (Object.keys(restored).length === 0) return;
+    lateMatchesRestored.current = true;
+    setDesignMatches((prev) => ({ ...prev, ...restored }));
+    if (Object.keys(cardUpdates).length > 0) {
+      const nextMap = { ...multiCeremonyCards, ...cardUpdates };
+      setMultiCeremonyCards(nextMap);
+      const sum = sumCardPrices(nextMap);
+      if (sum > 0) setBasePrice(sum);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookedClients, clientId, eventSchedule, enquiryEventPicks]);
+
+  const handleDesignMatchChange = (ref: DesignPick, answer: DesignMatchAnswer) => {
+    if (!activeEventDesign) return;
+    const { ev, idx, rawPicks, allCatalog } = activeEventDesign;
+    const forEvent = { ...(designMatches[ev.id] ?? {}), [ref.key]: answer };
+    setDesignMatches((prev) => ({ ...prev, [ev.id]: { ...(prev[ev.id] ?? {}), [ref.key]: answer } }));
+
+    // The event's cards follow the answers: a chosen catalogue design takes the
+    // reference design's place (for pricing and the saved quotation).
+    const cards = buildEventCardsWithMatches(rawPicks, allCatalog, idx, forEvent);
+    const nextMap = { ...multiCeremonyCards, [ev.id]: cards, [`event-${idx}`]: cards, [`c-${idx + 1}`]: cards };
+    setMultiCeremonyCards(nextMap);
+    const sum = sumCardPrices(nextMap);
+    if (sum > 0) setBasePrice(sum);
+    if (matchedFromCatalog(answer)) {
+      const matched = findDecorationInCatalog(answer.matchedSetupId, allCatalog);
+      if (matched) setSetup(matched);
+    }
+  };
+
   // Validation for Pricing & Discount before finishing
   const validatePricingAndDiscount = (): { valid: boolean; error?: string } => {
     if (!clientName.trim()) {
@@ -1813,7 +2077,10 @@ export function QuotationStudioPage({
         const cards = getCeremonyCardsList(multiCeremonyCards, ev.id);
         const primaryCard = cards[0];
         const combinedPrice = cards.reduce((sum, c) => sum + Number(c.total_price || 45000), 0);
+        // Step 4 answers for this event's reference designs (only answered ones).
+        const matches = Object.values(designMatches[ev.id] ?? {}).filter((m) => availabilityOf(m));
         return {
+          ...(matches.length > 0 ? { designMatches: matches } : {}),
           id: ev.id || `ceremony-${idx + 1}`,
           name: ev.name || `Ceremony ${idx + 1}`,
           date: ev.dateBs || ev.dateAd || "Date TBD",
@@ -3070,7 +3337,25 @@ Valid for 14 days.`;
             )}
 
             {/* ─── DYNAMIC EVENT CONFIGURATION STEPS (Step 4+: Event 1, Event 2, ...) ─── */}
-            {currentStep.type === "event_setup" && (
+            {/* Client picked another company's design: match it (our design vs. their reference) */}
+            {currentStep.type === "event_setup" && activeEventDesign && activeEventDesign.references.length > 0 && (
+              <EventDesignMatchStep
+                eventName={activeEventDesign.ev.name || `Event ${activeEventDesign.idx + 1}`}
+                activeEventIndex={activeEventDesign.idx}
+                totalEvents={eventSchedule.length}
+                nextEventName={eventSchedule[activeEventDesign.idx + 1]?.name}
+                ourPicks={activeEventDesign.ours}
+                references={activeEventDesign.references}
+                ourCatalog={activeEventDesign.ourCatalog}
+                answers={designMatches[activeEventDesign.ev.id] ?? {}}
+                onChangeAnswer={handleDesignMatchChange}
+                clientNote={activeEventDesign.ev.notes}
+                onBack={goBack}
+                onContinue={continueFromEventSetup}
+              />
+            )}
+            {/* No client reference design (manual quotation, or only our designs): catalogue selection */}
+            {currentStep.type === "event_setup" && !(activeEventDesign && activeEventDesign.references.length > 0) && (
               <MultiCeremonyCardSelector
                 ceremonies={eventSchedule.map((ev) => ({
                   id: ev.id,
@@ -3165,38 +3450,7 @@ Valid for 14 days.`;
                     return updated;
                   });
                 }}
-                onContinue={() => {
-                  // Synchronize base price from assigned cards
-                  const sum = Object.values(multiCeremonyCards)
-                    .flat()
-                    .reduce(
-                      (s, c) =>
-                        s +
-                        (c
-                          ? Number(
-                              c.total_price ||
-                                c.stageSpecs?.price ||
-                                c.mandapSpecs?.price ||
-                                c.backdropSpecs?.price ||
-                                c.entranceGateSpecs?.price ||
-                                45000
-                            )
-                          : 0),
-                      0
-                    );
-                  if (sum > 0) {
-                    setBasePrice(sum);
-                  }
-                  if (forceStep4EventIds.has(currentStep.eventId || "")) {
-                    const pricing = dynamicSteps.find((s) => s.type === "pricing");
-                    if (pricing) {
-                      setWizardStep(pricing.stepNumber);
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                      return;
-                    }
-                  }
-                  goNext();
-                }}
+                onContinue={continueFromEventSetup}
                 onBack={goBack}
                 onOpenWhatsAppDispatch={() => setShowDispatchModal(true)}
                 clientName={clientName}
@@ -3389,6 +3643,25 @@ Valid for 14 days.`;
                     </div>
                   </div>
 
+                  {/* Larger view of a client design reference screenshot */}
+                  <Dialog open={!!referencePreview} onOpenChange={(open) => !open && setReferencePreview(null)}>
+                    <DialogContent
+                      aria-describedby={undefined}
+                      className="max-w-3xl w-[calc(100%-2rem)] bg-white p-3 sm:p-4 rounded-2xl"
+                    >
+                      <DialogTitle className="text-sm font-semibold text-slate-900 pr-8">
+                        Design reference · {referencePreview?.title}
+                      </DialogTitle>
+                      {referencePreview && (
+                        <img
+                          src={referencePreview.src}
+                          alt={`Design reference: ${referencePreview.title}`}
+                          className="max-h-[75dvh] w-full rounded-lg bg-stone-50 object-contain"
+                        />
+                      )}
+                    </DialogContent>
+                  </Dialog>
+
                   <div className="overflow-x-auto rounded-xl border border-stone-200/80">
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
@@ -3410,7 +3683,7 @@ Valid for 14 days.`;
                       </thead>
                       <tbody className="divide-y divide-stone-100">
                         {/* Fallback base setup row if no catalog items selected */}
-                        {selectedCatalogItems.length === 0 && (
+                        {selectedCatalogItems.length === 0 && designReferenceRows.length === 0 && (
                           <tr className="bg-white hover:bg-stone-50/60 transition-colors">
                             <td className="py-3 px-3.5 text-center text-slate-400 font-mono text-[11px]">1</td>
                             <td className="py-3 px-3.5">
@@ -3559,10 +3832,115 @@ Valid for 14 days.`;
                           );
                         })}
 
+                        {/* Client design references (Step 4 uploads): shown, never priced */}
+                        {designReferenceRows.map((ref, idx) => {
+                          const a = ref.answer;
+                          return (
+                            <tr key={ref.id} className="bg-amber-50/30 hover:bg-amber-50/60 transition-colors">
+                              <td className="py-3 px-3.5 text-center text-slate-400 font-mono text-[11px]">
+                                {selectedCatalogItems.length + idx + 1}
+                              </td>
+                              <td className="py-3 px-3.5">
+                                <div className="flex items-start gap-3">
+                                  {a.screenshot ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setReferencePreview({ src: a.screenshot!, title: a.referenceName })
+                                      }
+                                      className="group relative size-14 shrink-0 mt-0.5 overflow-hidden rounded-lg border border-black/5 shadow-xs cursor-zoom-in"
+                                      title="View larger"
+                                    >
+                                      <img
+                                        src={a.screenshot}
+                                        alt={`Design reference: ${a.referenceName}`}
+                                        className="size-full object-cover"
+                                      />
+                                      <span className="absolute inset-0 grid place-items-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
+                                        <Maximize2 className="size-3.5" />
+                                      </span>
+                                    </button>
+                                  ) : (
+                                    <div className="size-14 shrink-0 mt-0.5 grid place-items-center rounded-lg border border-dashed border-stone-300 text-stone-400">
+                                      <ImagePlus className="size-4" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                      <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                                        {a.referenceName}
+                                      </span>
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                        Client design reference
+                                      </span>
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-[#e14b68] border border-rose-200/70">
+                                        {ref.ceremonyName}
+                                        {ref.ceremonyDate ? ` · ${ref.ceremonyDate}` : ""}
+                                      </span>
+                                    </div>
+                                    {a.description.trim() && (
+                                      <p className="text-[11px] text-slate-600 mt-1 whitespace-pre-line break-words">
+                                        <span className="font-semibold text-slate-700">Design requirements: </span>
+                                        {a.description.trim()}
+                                      </p>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => openStep4ForEvent(ref.ceremonyId)}
+                                      className="mt-1 text-[11px] font-semibold text-[#e14b68] hover:text-[#c43852] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                                    >
+                                      Edit reference
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-3.5 text-center">
+                                <div className="flex flex-col items-center gap-1">
+                                  {a.referenceCategory && (
+                                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold capitalize bg-stone-100 text-slate-700">
+                                      {a.referenceCategory}
+                                    </span>
+                                  )}
+                                  <span className="inline-block px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider border bg-amber-50 text-amber-800 border-amber-200">
+                                    Custom
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-3.5 text-center text-slate-600 font-medium">
+                                {a.rate !== undefined ? 1 : <span className="text-slate-300">—</span>}
+                              </td>
+                              <td className="py-3 px-3.5 text-slate-400 text-xs">—</td>
+                              <td className="py-3 px-3.5 text-right">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  inputMode="numeric"
+                                  value={a.rate ?? ""}
+                                  placeholder="Not priced"
+                                  aria-label={`Rate for ${a.referenceName}`}
+                                  onChange={(e) =>
+                                    handleUpdateDesignReferenceRate(ref.ceremonyId, a.referenceKey, e.target.value)
+                                  }
+                                  className="h-8 text-xs text-right font-medium rounded-lg w-28 ml-auto bg-white border-amber-200 placeholder:italic placeholder:text-slate-400"
+                                />
+                              </td>
+                              <td className="py-3 px-3.5 text-right tabular-nums">
+                                {a.rate !== undefined ? (
+                                  <span className="font-bold text-slate-900">Rs. {a.rate.toLocaleString()}</span>
+                                ) : (
+                                  <span className="text-[11px] font-medium text-slate-400 italic">Not priced</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-center text-slate-300">—</td>
+                            </tr>
+                          );
+                        })}
+
                         {/* Paid add-ons */}
                         {items.map((item, idx) => {
                           const lineTotal = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
-                          const rowNum = (selectedCatalogItems.length || 1) + idx + 1;
+                          const rowNum =
+                            (selectedCatalogItems.length + designReferenceRows.length || 1) + idx + 1;
                           return (
                             <tr key={item.id} className="bg-white hover:bg-stone-50/60 transition-colors">
                               <td className="py-3 px-3.5 text-center text-slate-400 font-mono text-[11px]">{rowNum}</td>

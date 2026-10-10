@@ -96,26 +96,50 @@ export function clearProfile() {
   window.localStorage.removeItem(STORAGE_KEY);
 }
 
+// One request is shared by every component using the profile (several per page).
+let profileRemoteLoad: Promise<CompanyProfile | null | undefined> | null = null;
+let profileRemoteLoadedAt = 0;
+const PROFILE_FRESH_MS = 30_000;
+
+/** Resolves the Supabase profile (null = none saved yet), or undefined if the request failed. */
+function loadRemoteProfile(): Promise<CompanyProfile | null | undefined> {
+  if (profileRemoteLoad && Date.now() - profileRemoteLoadedAt < PROFILE_FRESH_MS) return profileRemoteLoad;
+  profileRemoteLoadedAt = Date.now();
+  profileRemoteLoad = fetchCompanyProfileFromSupabase().catch((err) => {
+    console.warn("[company-profile] Loading profile from Supabase failed:", err);
+    profileRemoteLoad = null;
+    return undefined;
+  });
+  return profileRemoteLoad;
+}
+
 export function useCompanyProfile() {
   const [profile, setProfile] = useState<CompanyProfile | null>(loadProfile);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    fetchCompanyProfileFromSupabase().then((data) => {
+    let active = true;
+    void loadRemoteProfile().then((data) => {
+      if (!active) return;
       if (data) {
         setProfile(data);
         if (typeof window !== "undefined") {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         }
-      } else {
+      } else if (data === null) {
+        // Supabase confirmed it has no profile yet: upload the local one.
         const local = loadProfile();
         if (local) {
           setProfile(local);
           void saveCompanyProfileToSupabase(local);
         }
       }
+      // data === undefined: the request failed; keep the local profile, write nothing.
       setReady(true);
     });
+    return () => {
+      active = false;
+    };
   }, []);
 
   return { profile, ready };

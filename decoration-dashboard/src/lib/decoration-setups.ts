@@ -1,4 +1,4 @@
-import { fetchDecorationsFromSupabase, upsertDecorationInSupabase, deleteDecorationFromSupabase, subscribeToDecorationsRealtime } from "./supabase-service";
+import { fetchDecorationsFromSupabase, fetchDecorationByIdFromSupabase, upsertDecorationInSupabase, deleteDecorationFromSupabase, subscribeToDecorationsRealtime } from "./supabase-service";
 import { useState, useEffect } from "react";
 import { getCurrentCompanyId, getCompanyNameById, DEFAULT_COMPANY_ID } from "./current-company";
 
@@ -606,11 +606,37 @@ export const STORAGE_KEY_COMPONENTS = "decoration-portal:decoration-components";
 export const STORAGE_KEY_QUOTATIONS_COUNT = "decoration-portal:setup-quotations";
 export const STORAGE_KEY_DELETED = "decoration-portal:deleted-setups";
 
+// The catalogue holds base64 photos (several MB). Parsing it from localStorage on
+// every call made each decoration card re-read it on every render, so the parsed
+// result is kept in memory until this file writes the keys again or another tab does.
+let setupsCache: DecorationSetupItem[] | null = null;
+let deletedIdsCache: Set<string> | null = null;
+let setupsCacheVersion = 0;
+
+function invalidateSetupsCache() {
+  setupsCache = null;
+  deletedIdsCache = null;
+  setupsCacheVersion++;
+}
+
+/** Changes whenever the stored catalogue (or deleted-ids list) may have changed. */
+export function getSetupsCacheVersion(): number {
+  return setupsCacheVersion;
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === null || e.key === STORAGE_KEY || e.key === STORAGE_KEY_DELETED) invalidateSetupsCache();
+  });
+}
+
 export function loadDeletedSetupIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
+  if (deletedIdsCache) return new Set(deletedIdsCache);
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY_DELETED);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
+    deletedIdsCache = raw ? new Set(JSON.parse(raw)) : new Set();
+    return new Set(deletedIdsCache);
   } catch {
     return new Set();
   }
@@ -623,6 +649,7 @@ export function recordDeletedSetupId(id: string) {
     set.add(id);
     window.localStorage.setItem(STORAGE_KEY_DELETED, JSON.stringify([...set]));
   } catch {}
+  invalidateSetupsCache();
 }
 
 export function loadSetupQuotationCounts(): Record<string, number> {
@@ -669,6 +696,13 @@ export function saveStoredComponents(componentsMap: Record<string, DecorationCom
 
 export function loadStoredSetups(): DecorationSetupItem[] {
   if (typeof window === "undefined") return INITIAL_DECORATION_SETUPS;
+  if (setupsCache) return [...setupsCache];
+  const result = readStoredSetups();
+  if (result !== INITIAL_DECORATION_SETUPS) setupsCache = result;
+  return [...result];
+}
+
+function readStoredSetups(): DecorationSetupItem[] {
   try {
     const deletedIds = loadDeletedSetupIds();
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -730,7 +764,10 @@ export function loadStoredSetups(): DecorationSetupItem[] {
       }
 
       if (cleaned.length !== parsed.length || hadMigration) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        // Only write back when the migration really changed something; some
+        // presets re-trigger it on every read, which rewrote megabytes each time.
+        const next = JSON.stringify(migrated);
+        if (next !== raw) window.localStorage.setItem(STORAGE_KEY, next);
       }
       return migrated;
     }
@@ -887,7 +924,32 @@ export function extractPublicCategoryDetails(found: any) {
  * Strips out private/internal fields (internal costs, BOM items, profit margins, internal notes)
  * and returns only the public catalogue fields shown to clients.
  */
+// Lookups are pure for a given catalogue version, and cards ask for the same
+// snapshot on every render, so results are cached per snapshot object/id.
+const sharedLookupByItem = new WeakMap<object, { v: number; id: string; r: PublicDecorationRecord | null }>();
+const sharedLookupById = new Map<string, { v: number; r: PublicDecorationRecord | null }>();
+
 export function getSharedPublicDecoration(
+  decId?: string | null,
+  contextItem?: any
+): PublicDecorationRecord | null {
+  const id = String(decId ?? "");
+  const v = setupsCacheVersion;
+  if (contextItem && typeof contextItem === "object") {
+    const hit = sharedLookupByItem.get(contextItem);
+    if (hit && hit.v === v && hit.id === id) return hit.r;
+    const r = lookupSharedPublicDecoration(decId, contextItem);
+    sharedLookupByItem.set(contextItem, { v, id, r });
+    return r;
+  }
+  const hit = sharedLookupById.get(id);
+  if (hit && hit.v === v) return hit.r;
+  const r = lookupSharedPublicDecoration(decId, contextItem);
+  sharedLookupById.set(id, { v, r });
+  return r;
+}
+
+function lookupSharedPublicDecoration(
   decId?: string | null,
   contextItem?: any
 ): PublicDecorationRecord | null {
@@ -1098,6 +1160,8 @@ export async function compressImage(
 export function saveStoredSetups(setups: DecorationSetupItem[]) {
   setups = setups.filter((s) => !DUMMY_SETUP_IDS.has(s.id));
   if (typeof window === "undefined") return;
+  // Re-read on next load, before "decoration-setups-updated" listeners run.
+  invalidateSetupsCache();
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(setups));
     window.dispatchEvent(new Event("decoration-setups-updated"));
@@ -1130,27 +1194,68 @@ export function saveStoredSetups(setups: DecorationSetupItem[]) {
   }
 }
 
+// ── Shared Supabase sync for the catalogue ───────────────────────────────────
+// Several components on one page use the store (four on the dashboard alone),
+// and each used to download the whole table on mount (and again under React
+// StrictMode). One shared request now serves them all, refreshed when stale.
+const SETUPS_FRESH_MS = 60_000;
+let setupsRemoteLoad: Promise<void> | null = null;
+let setupsRemoteLoadedAt = 0;
+let setupsRemoteLoadedOnce = false;
+
+function refreshSetupsFromSupabase(force = false): Promise<void> {
+  if (setupsRemoteLoad) return setupsRemoteLoad;
+  if (!force && Date.now() - setupsRemoteLoadedAt < SETUPS_FRESH_MS) return Promise.resolve();
+  setupsRemoteLoad = fetchDecorationsFromSupabase()
+    .then((data) => {
+      setupsRemoteLoadedAt = Date.now();
+      setupsRemoteLoadedOnce = true;
+      saveStoredSetups(data);
+    })
+    .catch((err) => {
+      // Keep the cached catalogue; a failed request is not an empty catalogue.
+      console.warn("[decoration-setups] Loading decorations from Supabase failed:", err);
+    })
+    .finally(() => {
+      setupsRemoteLoad = null;
+    });
+  return setupsRemoteLoad;
+}
+
+/** Applies one changed decoration from realtime (fetches just that row). */
+function applyRemoteSetupChange(id: string) {
+  fetchDecorationByIdFromSupabase(id)
+    .then((row) => {
+      const current = loadStoredSetups();
+      const idx = current.findIndex((s) => s.id === id);
+      if (row) {
+        const next = [...current];
+        if (idx >= 0) next[idx] = row;
+        else next.unshift(row);
+        saveStoredSetups(next);
+      } else if (idx >= 0) {
+        saveStoredSetups(current.filter((s) => s.id !== id));
+      }
+    })
+    .catch((err) => console.warn(`[decoration-setups] Loading decoration ${id} failed:`, err));
+}
+
 export function useDecorationSetupsStore() {
   const [setups, setSetups] = useState<DecorationSetupItem[]>(loadStoredSetups);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(setupsRemoteLoadedOnce);
 
   useEffect(() => {
-    // Initial fetch from Supabase
-    fetchDecorationsFromSupabase().then((data) => {
-      if (data && data.length >= 0) {
-        setSetups(data);
-        saveStoredSetups(data);
-      }
-      setIsLoaded(true);
+    let active = true;
+    // Shared, deduplicated fetch from Supabase (skipped while still fresh)
+    void refreshSetupsFromSupabase().then(() => {
+      if (active) setIsLoaded(true);
     });
 
-    // Shared Supabase Realtime Subscription
-    const unsubscribe = subscribeToDecorationsRealtime(() => {
-      fetchDecorationsFromSupabase().then((data) => {
-        setSetups(data);
-        saveStoredSetups(data);
-      });
-    });
+    // Shared Supabase Realtime Subscription: only the changed row is fetched
+    const unsubscribe = subscribeToDecorationsRealtime(
+      (change) => applyRemoteSetupChange(change.id),
+      () => void refreshSetupsFromSupabase(true),
+    );
 
     const handleSync = () => {
       setSetups(loadStoredSetups());
@@ -1158,8 +1263,10 @@ export function useDecorationSetupsStore() {
 
     window.addEventListener("storage", handleSync);
     window.addEventListener("decoration-setups-updated", handleSync);
+    handleSync(); // pick up a load that finished before this listener was attached
 
     return () => {
+      active = false;
       window.removeEventListener("storage", handleSync);
       window.removeEventListener("decoration-setups-updated", handleSync);
       unsubscribe();

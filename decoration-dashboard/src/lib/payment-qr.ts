@@ -39,22 +39,44 @@ export function savePaymentQrs(list: PaymentQr[]): boolean {
   }
 }
 
+let qrsRemoteLoad: Promise<PaymentQr[] | undefined> | null = null;
+let qrsRemoteLoadedAt = 0;
+const QRS_FRESH_MS = 30_000;
+
+/** Resolves the Supabase QR list, or undefined if the request failed (never [] on failure). */
+function loadRemoteQrs(): Promise<PaymentQr[] | undefined> {
+  if (qrsRemoteLoad && Date.now() - qrsRemoteLoadedAt < QRS_FRESH_MS) return qrsRemoteLoad;
+  qrsRemoteLoadedAt = Date.now();
+  qrsRemoteLoad = fetchPaymentQrsFromSupabase().catch((err) => {
+    console.warn("[payment-qr] Loading payment QRs from Supabase failed:", err);
+    qrsRemoteLoad = null;
+    return undefined;
+  });
+  return qrsRemoteLoad;
+}
+
 export function usePaymentQrs() {
   const [qrs, setQrs] = useState<PaymentQr[]>(loadPaymentQrs);
 
   useEffect(() => {
-    // Initial fetch from Supabase
-    fetchPaymentQrsFromSupabase().then((data) => {
-      if (data && data.length > 0) {
+    let active = true;
+    // Initial fetch from Supabase (one request shared by every user of the hook)
+    void loadRemoteQrs().then((data) => {
+      if (!active || data === undefined) return; // request failed: keep local QRs, write nothing
+      if (data.length > 0) {
         setQrs(data);
         savePaymentQrs(data);
       } else {
+        // Supabase confirmed it has none yet: upload the local ones.
         const local = loadPaymentQrs();
         if (local.length > 0) {
           void savePaymentQrsToSupabase(local);
         }
       }
     });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const update = useCallback((next: PaymentQr[]): boolean => {

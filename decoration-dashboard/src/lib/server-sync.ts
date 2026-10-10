@@ -6,6 +6,7 @@ import { loadProfile } from "./company-profile";
 import { convertAdToBs } from "./event-schedule";
 import {
   loadStoredSetups,
+  getSetupsCacheVersion,
   getSharedPublicDecoration,
   type DecorationSetupItem,
 } from "./decoration-setups";
@@ -185,10 +186,18 @@ function companyName(): string {
 let publishTimer: ReturnType<typeof setTimeout> | undefined;
 let lastPublished = "";
 
+// The body (several MB with photos) is rebuilt only when the catalogue or vendor
+// name changes, not on every 10-second retry.
+let bodyCache: { version: number; vendor: string; body: string } | null = null;
+
 async function publishDecorations() {
   const vendor = companyName();
-  const payload = loadStoredSetups().map((s) => toPublic(s, vendor));
-  const body = JSON.stringify({ decorations: payload });
+  const version = getSetupsCacheVersion();
+  if (!bodyCache || bodyCache.version !== version || bodyCache.vendor !== vendor) {
+    const payload = loadStoredSetups().map((s) => toPublic(s, vendor));
+    bodyCache = { version, vendor, body: JSON.stringify({ decorations: payload }) };
+  }
+  const body = bodyCache.body;
   if (body === lastPublished) return;
   try {
     const res = await fetch(`${getApiBase()}/api/decorations`, {

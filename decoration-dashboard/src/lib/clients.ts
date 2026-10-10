@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { fetchBookedClientsFromSupabase, upsertBookedClientInSupabase, deleteBookedClientFromSupabase, subscribeToBookedClientsRealtime } from "./supabase-service";
+import { fetchBookedClientsFromSupabase, fetchBookedClientByIdFromSupabase, upsertBookedClientInSupabase, deleteBookedClientFromSupabase, subscribeToBookedClientsRealtime } from "./supabase-service";
+import type { DesignMatchAnswer } from "./design-match";
 
 export type BookingStage =
   | "confirmed"
@@ -68,6 +69,8 @@ export interface ClientCeremonyItem {
   category?: string | undefined;
   items?: CeremonySetupItem[] | undefined;
   notes?: string[] | string | undefined;
+  /** Step 4: how each client reference design (another company's) is fulfilled. */
+  designMatches?: DesignMatchAnswer[] | undefined;
 }
 
 export interface BookedClient {
@@ -177,8 +180,20 @@ const DUMMY_CLIENT_IDS = new Set([
 
 const STORAGE_KEY = "decoration-portal:booked-clients";
 
-export function loadStoredBookedClients(includeDeleted = false): BookedClient[] {
-  if (typeof window === "undefined") return [];
+const BOOKED_CLIENTS_UPDATED_EVENT = "booked-clients-updated";
+
+// The booked-clients data (with photos) is larger than localStorage allows, so
+// writes there fail and every page used to re-download it. The latest list is
+// kept in memory for the session; localStorage is still written when it fits.
+let clientsMemory: BookedClient[] | null = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === null || e.key === STORAGE_KEY) clientsMemory = null;
+  });
+}
+
+function readStoredBookedClients(): BookedClient[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -188,7 +203,7 @@ export function loadStoredBookedClients(includeDeleted = false): BookedClient[] 
       if (cleaned.length !== parsed.length) {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
       }
-      return includeDeleted ? cleaned : cleaned.filter((c) => !c.deleted_at);
+      return cleaned;
     }
     return [];
   } catch {
@@ -196,39 +211,92 @@ export function loadStoredBookedClients(includeDeleted = false): BookedClient[] 
   }
 }
 
+export function loadStoredBookedClients(includeDeleted = false): BookedClient[] {
+  if (typeof window === "undefined") return [];
+  if (!clientsMemory) clientsMemory = readStoredBookedClients();
+  return includeDeleted ? [...clientsMemory] : clientsMemory.filter((c) => !c.deleted_at);
+}
+
 export function saveStoredBookedClients(clients: BookedClient[]) {
   if (typeof window === "undefined") return;
+  const cleaned = clients.filter((c) => !DUMMY_CLIENT_IDS.has(c.id));
+  clientsMemory = cleaned;
   try {
-    const cleaned = clients.filter((c) => !DUMMY_CLIENT_IDS.has(c.id));
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
   } catch (err) {
     console.error("Failed to save booked clients to localStorage:", err);
   }
+  window.dispatchEvent(new Event(BOOKED_CLIENTS_UPDATED_EVENT));
+}
+
+// ── Shared Supabase sync ──────────────────────────────────────────────────────
+// One request serves every component using the store; it is skipped while the
+// data is fresh, and realtime changes fetch only the changed row.
+const CLIENTS_FRESH_MS = 60_000;
+let clientsRemoteLoad: Promise<void> | null = null;
+let clientsRemoteLoadedAt = 0;
+let clientsRemoteLoadedOnce = false;
+
+function refreshBookedClientsFromSupabase(force = false): Promise<void> {
+  if (clientsRemoteLoad) return clientsRemoteLoad;
+  if (!force && Date.now() - clientsRemoteLoadedAt < CLIENTS_FRESH_MS) return Promise.resolve();
+  clientsRemoteLoad = fetchBookedClientsFromSupabase()
+    .then((data) => {
+      clientsRemoteLoadedAt = Date.now();
+      clientsRemoteLoadedOnce = true;
+      saveStoredBookedClients(data);
+    })
+    .catch((err) => {
+      // Keep the cached clients; a failed request is not an empty list.
+      console.warn("[clients] Loading booked clients from Supabase failed:", err);
+    })
+    .finally(() => {
+      clientsRemoteLoad = null;
+    });
+  return clientsRemoteLoad;
+}
+
+function applyRemoteClientChange(id: string) {
+  fetchBookedClientByIdFromSupabase(id)
+    .then((row) => {
+      const all = loadStoredBookedClients(true);
+      const idx = all.findIndex((c) => c.id === id);
+      if (row) {
+        const next = [...all];
+        if (idx >= 0) next[idx] = row;
+        else next.unshift(row);
+        saveStoredBookedClients(next);
+      } else if (idx >= 0) {
+        saveStoredBookedClients(all.filter((c) => c.id !== id));
+      }
+    })
+    .catch((err) => console.warn(`[clients] Loading booked client ${id} failed:`, err));
 }
 
 export function useBookedClientsStore() {
-  const [clients, setClients] = useState<BookedClient[]>(loadStoredBookedClients);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [clients, setClients] = useState<BookedClient[]>(() => loadStoredBookedClients());
+  const [isLoaded, setIsLoaded] = useState(clientsRemoteLoadedOnce);
 
   useEffect(() => {
-    // Live fetch from Supabase
-    fetchBookedClientsFromSupabase().then((data) => {
-      if (data && data.length >= 0) {
-        setClients(data.filter((c) => !c.deleted_at));
-        saveStoredBookedClients(data);
-      }
-      setIsLoaded(true);
+    let active = true;
+    // Shared, deduplicated fetch from Supabase (skipped while still fresh)
+    void refreshBookedClientsFromSupabase().then(() => {
+      if (active) setIsLoaded(true);
     });
 
-    // Shared Supabase Realtime Subscription
-    const unsubscribe = subscribeToBookedClientsRealtime(() => {
-      fetchBookedClientsFromSupabase().then((data) => {
-        setClients(data.filter((c) => !c.deleted_at));
-        saveStoredBookedClients(data);
-      });
-    });
+    // Shared Supabase Realtime Subscription: only the changed row is fetched
+    const unsubscribe = subscribeToBookedClientsRealtime(
+      (change) => applyRemoteClientChange(change.id),
+      () => void refreshBookedClientsFromSupabase(true),
+    );
+
+    const handleSync = () => setClients(loadStoredBookedClients());
+    window.addEventListener(BOOKED_CLIENTS_UPDATED_EVENT, handleSync);
+    handleSync(); // pick up a load that finished before this listener was attached
 
     return () => {
+      active = false;
+      window.removeEventListener(BOOKED_CLIENTS_UPDATED_EVENT, handleSync);
       unsubscribe();
     };
   }, []);
