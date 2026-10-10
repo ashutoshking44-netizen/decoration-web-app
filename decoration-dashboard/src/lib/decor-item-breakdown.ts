@@ -232,7 +232,14 @@ export function getDecorItemBreakdown(
 
     const flowersList: FloralBreakdownItem[] = (specs.flowers && specs.flowers.length > 0)
       ? specs.flowers.map((f) => {
-          const typeLabel = f.type === "natural" ? "Fresh" : f.type === "artificial" ? "Silk" : "Mixed";
+          const typeLabel =
+            f.type === "natural"
+              ? "Fresh"
+              : f.type === "artificial"
+                ? "Silk"
+                : f.natural_percent !== undefined
+                  ? `Mixed ${f.natural_percent}% fresh / ${100 - f.natural_percent}% silk`
+                  : "Mixed";
           const colourLabel = f.colour || "Pink";
           return {
             name: f.name,

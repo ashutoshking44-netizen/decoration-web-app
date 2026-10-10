@@ -62,10 +62,13 @@ export function EnquiryDatePicker({
   dates,
   onChange,
   error,
+  single = false,
 }: {
   dates: PickedDate[];
   onChange: (dates: PickedDate[]) => void;
   error?: string | undefined;
+  /** Just a calendar for one date: no heading, chips or "pending date" option. */
+  single?: boolean | undefined;
 }) {
   const today = useMemo(() => new Date(), []);
   const todayIso = iso(today);
@@ -144,9 +147,11 @@ export function EnquiryDatePicker({
 
   return (
     <div className="space-y-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8A7B76]">
-        Select event dates <span className="text-[#D6415C]">*</span>
-      </p>
+      {!single && (
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8A7B76]">
+          Select event dates <span className="text-[#D6415C]">*</span>
+        </p>
+      )}
 
       <div className="rounded-3xl border bg-white p-3 sm:p-4" style={{ borderColor: BORDER }}>
         <div className="mb-3 flex items-center justify-between gap-2">
@@ -231,7 +236,7 @@ export function EnquiryDatePicker({
         </div>
       </div>
 
-      {(exact.length > 0 || pending.length > 0) && (
+      {!single && (exact.length > 0 || pending.length > 0) && (
         <div className="flex flex-wrap gap-2">
           {exact.map((d) => (
             <Chip
@@ -252,7 +257,7 @@ export function EnquiryDatePicker({
         </div>
       )}
 
-      {pendingOpen ? (
+      {single ? null : pendingOpen ? (
         <div className="space-y-3 rounded-2xl border border-dashed border-rose-300 bg-rose-50/60 p-4">
           <p className="text-xs font-semibold text-rose-800">Which month is it likely to be?</p>
           <div className="grid grid-cols-2 gap-3">

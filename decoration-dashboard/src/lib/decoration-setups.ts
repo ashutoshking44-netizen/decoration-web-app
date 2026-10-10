@@ -1,4 +1,6 @@
+import { fetchDecorationsFromSupabase, upsertDecorationInSupabase, deleteDecorationFromSupabase, subscribeToDecorationsRealtime } from "./supabase-service";
 import { useState, useEffect } from "react";
+import { getCurrentCompanyId, getCompanyNameById, DEFAULT_COMPANY_ID } from "./current-company";
 
 export type DecorationCategory = "Mandap" | "Entrance Gate" | "Welcome Board" | "Backdrop" | "Stage";
 
@@ -70,6 +72,8 @@ export type SelectedFlowerItem = {
   inventory_item_id?: string | undefined;
   name: string;
   type: "natural" | "artificial" | "mixed";
+  /** For "mixed" flowers: share that is natural, 0-100 (the rest is artificial). */
+  natural_percent?: number | undefined;
   colour?: string | undefined;
   unit?: string | undefined;
   unit_price?: number | undefined;
@@ -193,6 +197,8 @@ export type DecorationSpecifications = {
   overall_lighting_cost?: number | undefined;
   applicable_events?: string[] | undefined;
   color_theme?: string[] | undefined; // hex values
+  floral_tag?: string | undefined;
+  price_unit?: string | undefined;
   base_pricing_rate?: number | undefined;
   furniture_used?: boolean | undefined;
   furniture_details?: string | undefined;
@@ -211,11 +217,21 @@ export type DecorationSetupItem = {
   imageUrl?: string | undefined;
   gallery?: string[] | undefined;
   status?: "Live" | "Paused" | "Draft" | string | undefined;
+  companyId?: string | undefined;
+  companyName?: string | undefined;
   createdAt: string;
   updatedAt?: string | undefined;
   bookingCount?: number | undefined;
   applicable_events?: string[] | undefined;
   total_price?: number | undefined;
+  priceUnit?: string | undefined;
+  aliases?: string[] | undefined;
+  inclusions?: string[] | undefined;
+  style?: string | undefined;
+  theme?: string | undefined;
+  colours?: string | undefined;
+  size?: string | undefined;
+  dimensions?: string | undefined;
   specifications?: DecorationSpecifications | undefined;
   entranceGateSpecs?: EntranceGateSpecs | undefined;
   welcomeBoardSpecs?: WelcomeBoardSpecs | undefined;
@@ -389,496 +405,225 @@ export const FLOWER_PRESET_COLOURS = [
 
 export const INITIAL_DECORATION_SETUPS: DecorationSetupItem[] = [
   {
-    id: "setup-gate-1",
-    sku: "GATE-ROY-01",
-    name: "Royal Mughal Grand Entrance Gate",
-    category: "Entrance Gate",
-    description: "Opulent entrance arch with warm welcome lighting and regal floral cascades for luxury ceremonies.",
-    imageUrl: "https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=600&auto=format&fit=crop&q=80",
-    createdAt: "2026-03-01T10:00:00Z",
-    updatedAt: "2026-03-12T14:30:00Z",
-    bookingCount: 24,
-    specifications: {
-      applicable_events: ["Wedding", "Reception", "Corporate"],
-      structure_type: "Grand Royal Mughal Pillar Arch",
-      dimensions: { width_ft: 12, height_ft: 10 },
-      flowers_used: true,
-      flowers: [
-        {
-          inventory_item_id: "inv-rose-1",
-          name: "Dutch Red Roses",
-          type: "natural",
-          colour: "Red",
-        },
-        {
-          inventory_item_id: "inv-silkflower-1",
-          name: "Hydrangea & Rose Swag",
-          type: "artificial",
-          colour: "White",
-        },
-      ],
-      color_theme: ["#DC143C", "#F7E7CE", "#B76E79"],
-      base_pricing_rate: 21800,
-      other_materials: [
-        { inventory_item_id: "inv-arch-1", name: "Geometric Hexagon Metal Arch", unit: "Set", quantity: 1 },
-      ],
-    },
-    entranceGateSpecs: {
-      compatibleEvents: ["Wedding", "Reception", "Sangeet & Haldi"],
-      structureType: "Grand Royal Mughal Pillar Arch",
-      floralUsage: true,
-      floralType: "Mixed (Fresh & Silk)",
-      pricingType: "Fixed Price",
-      price: 35000,
-    },
-    components: [
-      {
-        id: "comp-gate-1",
-        decoration_design_id: "setup-gate-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-arch-1",
-        item_name: "Geometric Hexagon Metal Arch",
-        category: "Decorative Materials",
-        quantity: 1,
-        unit: "Set",
-      },
-      {
-        id: "comp-gate-2",
-        decoration_design_id: "setup-gate-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-silkflower-1",
-        item_name: "Artificial Silk Hydrangea & Rose Swag",
-        category: "Decorative Materials",
-        quantity: 4,
-        unit: "Set",
-      },
-      {
-        id: "comp-gate-3",
-        decoration_design_id: "setup-gate-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-rose-1",
-        item_name: "Natural Fresh Dutch Red Roses",
-        category: "Flowers",
-        quantity: 5,
-        unit: "Bunch",
-      },
-      {
-        id: "comp-gate-4",
-        decoration_design_id: "setup-gate-1",
-        component_type: "Custom Material",
-        item_name: "Champagne Sheer Draping Fabric",
-        quantity: 20,
-        unit: "Meter",
-        notes: "Warm blush draping for pillar sides",
-      },
-    ],
-  },
-  {
-    id: "setup-board-1",
-    sku: "BRD-ACR-02",
-    name: "Clear Acrylic Mirror Welcome Board",
-    category: "Welcome Board",
-    description: "Sleek personalized welcome board on dark walnut easel with delicate floral corner swag.",
-    imageUrl: "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?w=600&auto=format&fit=crop&q=80",
-    createdAt: "2026-03-05T12:30:00Z",
-    updatedAt: "2026-03-14T09:15:00Z",
-    bookingCount: 15,
-    specifications: {
-      applicable_events: ["Wedding", "Reception", "Engagement"],
-      structure_type: "Clear Acrylic Sheet on Easel",
-      dimensions: { width_ft: 2.5, height_ft: 4 },
-      flowers_used: false,
-      flowers: [],
-      color_theme: ["#FFFFF0", "#F7E7CE"],
-      base_pricing_rate: 6500,
-      other_materials: [
-        { inventory_item_id: "inv-board-1", name: "Plain White Welcome Board", unit: "Piece", quantity: 1 },
-        { inventory_item_id: "inv-stand-1", name: "Dark Walnut Easel Board Stand", unit: "Piece", quantity: 1 },
-      ],
-    },
-    welcomeBoardSpecs: {
-      materialType: "Clear Acrylic Sheet with Gold Lettering",
-      customTextAllowed: true,
-      personalizationNotes: "Custom couple names, date and monogram hashtag in mirror vinyl lettering.",
-      price: 6500,
-    },
-    components: [
-      {
-        id: "comp-board-1",
-        decoration_design_id: "setup-board-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-board-1",
-        item_name: "Plain White Welcome Board",
-        category: "Signage",
-        quantity: 1,
-        unit: "Piece",
-      },
-      {
-        id: "comp-board-2",
-        decoration_design_id: "setup-board-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-stand-1",
-        item_name: "Dark Walnut Easel Board Stand",
-        category: "Signage",
-        quantity: 1,
-        unit: "Piece",
-      },
-      {
-        id: "comp-board-3",
-        decoration_design_id: "setup-board-1",
-        component_type: "Custom Material",
-        item_name: "Custom Mirror Gold Lettering Decal",
-        quantity: 1,
-        unit: "Set",
-        notes: "Couple names and wedding hashtag",
-      },
-    ],
-  },
-  {
-    id: "setup-mandap-1",
-    sku: "MAN-DOM-03",
-    name: "Pastel Blossom 6-Pillar Dome Mandap",
+    id: "dec-c1-mandap",
+    sku: "MAN-ROYAL-01",
+    name: "Royal Carved Wooden Mandap",
     category: "Mandap",
-    description: "Handcrafted 6-pillar mandap dome adorned with cascading pastel carnations and brass bell accents.",
-    imageUrl: "https://images.unsplash.com/photo-1545232979-8bf68ee9b1af?w=600&auto=format&fit=crop&q=80",
-    createdAt: "2026-03-08T15:00:00Z",
-    updatedAt: "2026-03-22T16:45:00Z",
-    bookingCount: 42,
-    specifications: {
-      applicable_events: ["Wedding"],
-      structure_type: "6-Pillar Royal Dome Mandap",
-      dimensions: { width_ft: 14, height_ft: 12 },
-      flowers_used: true,
-      flowers: [
-        {
-          inventory_item_id: "inv-rose-1",
-          name: "Dutch Red Roses",
-          type: "natural",
-          colour: "Red",
-        },
-      ],
-      color_theme: ["#FFD1DC", "#F7E7CE", "#FFFFF0"],
-      base_pricing_rate: 67000,
-      other_materials: [
-        { inventory_item_id: "inv-chair-1", name: "Velvet Chiavari Banquet Chairs", unit: "Piece", quantity: 4 },
-        { inventory_item_id: "inv-foam-1", name: "Green Oasis Floral Foam Bricks", unit: "Box", quantity: 8 },
-      ],
-    },
-    mandapSpecs: {
-      structureType: "6-Pillar Royal Dome Mandap",
-      seatingIncluded: true,
-      floralUsage: true,
-      floralType: "Natural / Fresh",
-      pricingType: "Fixed Price",
-      price: 85000,
-    },
-    components: [
-      {
-        id: "comp-mandap-1",
-        decoration_design_id: "setup-mandap-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-chair-1",
-        item_name: "Velvet Chiavari Banquet Chairs",
-        category: "Furniture & Props",
-        quantity: 4,
-        unit: "Piece",
-      },
-      {
-        id: "comp-mandap-2",
-        decoration_design_id: "setup-mandap-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-rose-1",
-        item_name: "Natural Fresh Dutch Red Roses",
-        category: "Flowers",
-        quantity: 15,
-        unit: "Bunch",
-      },
-      {
-        id: "comp-mandap-3",
-        decoration_design_id: "setup-mandap-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-foam-1",
-        item_name: "Green Oasis Floral Foam Bricks",
-        category: "Decorative Materials",
-        quantity: 8,
-        unit: "Box",
-      },
-      {
-        id: "comp-mandap-4",
-        decoration_design_id: "setup-mandap-1",
-        component_type: "Custom Material",
-        item_name: "Hanging Brass Bell Kalire",
-        quantity: 8,
-        unit: "Piece",
-        notes: "Traditional brass bell accents for dome",
-      },
+    companyId: "company-1",
+    companyName: "Company 1",
+    description: "4-pillar handcrafted traditional carved mandap with natural marigold and rose garlands, warm chandeliers, and satin drapes.",
+    imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
+    gallery: [
+      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=800&q=80",
     ],
-  },
-  {
-    id: "setup-backdrop-1",
-    sku: "BCK-SHM-04",
-    name: "Golden Champagne Shimmer Stage Backdrop",
-    category: "Backdrop",
-    description: "Dynamic champagne gold kinetic shimmer sequin wall with perimeter warm LED downlighting.",
-    imageUrl: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80",
-    createdAt: "2026-03-10T16:20:00Z",
-    updatedAt: "2026-03-18T11:20:00Z",
-    bookingCount: 31,
+    status: "Live",
+    total_price: 85000,
+    createdAt: new Date().toISOString(),
+    applicable_events: ["Wedding"],
     specifications: {
-      applicable_events: ["Reception", "Corporate", "Anniversary"],
-      structure_type: "Shimmer Sequin & Velvet Draping Wall",
-      dimensions: { width_ft: 14, height_ft: 10 },
-      flowers_used: false,
-      flowers: [],
-      color_theme: ["#F7E7CE", "#FFD700"],
-      base_pricing_rate: 24000,
-      other_materials: [
-        { inventory_item_id: "inv-lights-2", name: "Warm White Fairy String Lights (50m)", unit: "Roll", quantity: 2 },
-        { inventory_item_id: "inv-light-1", name: "Warm White LED Par Can Spotlight", unit: "Piece", quantity: 4 },
-      ],
-    },
-    backdropSpecs: {
-      backdropStyle: "Shimmer Sequin & Velvet Draping Wall",
-      dimensions: "10 x 14 ft (Medium Stage Backdrop)",
-      integratedLighting: true,
-      pricingType: "Fixed Price",
-      price: 24000,
-    },
-    components: [
-      {
-        id: "comp-bck-1",
-        decoration_design_id: "setup-backdrop-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-lights-2",
-        item_name: "Warm White Fairy String Lights (50m)",
-        category: "Equipment",
-        quantity: 2,
-        unit: "Roll",
-      },
-      {
-        id: "comp-bck-2",
-        decoration_design_id: "setup-backdrop-1",
-        component_type: "Existing Inventory",
-        inventory_item_id: "inv-light-1",
-        item_name: "Warm White LED Par Can Spotlight",
-        category: "Equipment",
-        quantity: 4,
-        unit: "Piece",
-      },
-      {
-        id: "comp-bck-3",
-        decoration_design_id: "setup-backdrop-1",
-        component_type: "Custom Material",
-        item_name: "Champagne Shimmer Sequin Panels",
-        quantity: 8,
-        unit: "Piece",
-        notes: "Modular interlocking backdrop panels",
-      },
-    ],
-  },
-  {
-    id: "setup-stage-royal-classic",
-    sku: "STG-ROY-47",
-    name: "Royal Classic Stage",
-    category: "Stage",
-    description: "Opulent grand wedding stage with royal curved backdrop arches, velvet draping, and cascading red roses.",
-    imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?w=800&auto=format&fit=crop&q=80",
-    createdAt: "2026-03-15T10:00:00Z",
-    updatedAt: "2026-03-20T10:00:00Z",
-    bookingCount: 52,
-    total_price: 47000,
-    specifications: {
-      applicable_events: ["Wedding", "Reception"],
-      structure_type: "Grand Curved Truss Stage Frame",
-      dimensions: { width_ft: 24, height_ft: 12 },
-      flowers_used: true,
-      flowers: [
-        {
-          inventory_item_id: "inv-rose-1",
-          name: "Dutch Red Roses & White Hydrangeas",
-          type: "natural",
-          colour: "Red & White",
-        },
-      ],
-      color_theme: ["#DC143C", "#FFFFF0", "#F7E7CE"],
-      base_pricing_rate: 47000,
-    },
-    stageSpecs: {
-      structureType: "Grand Curved Truss Stage Frame",
-      dimensions: "24ft W x 14ft D x 12ft H",
-      platformIncluded: true,
-      lightingIncluded: true,
-      pricingType: "Fixed Price",
-      price: 47000,
-    },
-    components: [],
-  },
-  {
-    id: "setup-mandap-white-2",
-    sku: "MAN-WHT-75",
-    name: "White Mandap 2.0",
-    category: "Mandap",
-    description: "Pure white modern floating mandap with geometric crystal pillars, cascading white carnations and sacred floral havankund.",
-    imageUrl: "https://images.unsplash.com/photo-1545232979-8bf68ee9b1af?w=800&auto=format&fit=crop&q=80",
-    createdAt: "2026-03-16T12:00:00Z",
-    updatedAt: "2026-03-22T12:00:00Z",
-    bookingCount: 68,
-    total_price: 75000,
-    specifications: {
-      applicable_events: ["Wedding"],
-      structure_type: "4-Pillar Carved Floating Mandap",
+      structure_type: "4-Pillar Traditional Carved Mandap",
+      main_structure: "4-Pillar Traditional Carved Mandap",
+      setup_styles: ["Traditional Royal", "Temple Floral"],
       dimensions: { width_ft: 16, height_ft: 12 },
+      floral_tag: "with_flowers",
       flowers_used: true,
       flowers: [
-        {
-          inventory_item_id: "inv-carn-1",
-          name: "Fresh White Carnations & Gypsophila",
-          type: "natural",
-          colour: "Pure White",
-        },
-      ],
-      color_theme: ["#FFFFFF", "#F7E7CE"],
-      base_pricing_rate: 75000,
-    },
-    mandapSpecs: {
-      structureType: "4-Pillar Carved Floating Mandap",
-      seatingIncluded: true,
-      floralUsage: true,
-      floralType: "Natural / Fresh",
-      pricingType: "Fixed Price",
-      price: 75000,
-    },
-    components: [],
-  },
-  {
-    id: "setup-haldi-marigold-1",
-    sku: "BCK-HLD-32",
-    name: "Marigold Haldi Backdrop",
-    category: "Backdrop",
-    description: "Vibrant Haldi celebration setup featuring dense yellow & orange marigold curtains, brass urlis, and festive yellow drapes.",
-    imageUrl: "https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=800&auto=format&fit=crop&q=80",
-    createdAt: "2026-03-18T14:00:00Z",
-    updatedAt: "2026-03-25T14:00:00Z",
-    bookingCount: 38,
-    total_price: 32000,
-    specifications: {
-      applicable_events: ["Sangeet & Haldi", "Wedding"],
-      structure_type: "Telescopic Pipe & Drape Rigging",
-      dimensions: { width_ft: 12, height_ft: 8 },
-      flowers_used: true,
-      flowers: [
-        {
-          inventory_item_id: "inv-mari-1",
-          name: "Fresh Yellow & Orange Marigold Garlands",
-          type: "natural",
-          colour: "Yellow & Orange",
-        },
-      ],
-      color_theme: ["#FFD700", "#FF8C00"],
-      base_pricing_rate: 32000,
-    },
-    backdropSpecs: {
-      backdropStyle: "Marigold Draping Wall",
-      dimensions: "12 x 8 ft (Haldi Ceremony Backdrop)",
-      integratedLighting: false,
-      pricingType: "Fixed Price",
-      price: 32000,
-    },
-    components: [],
-  },
-  {
-    id: "setup-stage-structure-only",
-    sku: "STG-STR-38",
-    name: "Minimalist Geometric Truss Stage",
-    category: "Stage",
-    description: "Modern architectural stage framework with clean geometric box trusses, acoustic draping, and heavy-duty rigging.",
-    imageUrl: "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=800&auto=format&fit=crop&q=80",
-    createdAt: "2026-03-19T15:00:00Z",
-    updatedAt: "2026-03-24T15:00:00Z",
-    bookingCount: 19,
-    total_price: 38000,
-    specifications: {
-      applicable_events: ["Reception", "Corporate", "Wedding"],
-      structure_type: "Heavy-Duty Aluminum Truss Box Frame",
-      dimensions: { width_ft: 20, height_ft: 10 },
-      flowers_used: false,
-      flowers: [],
-      color_theme: ["#708090", "#000000"],
-      base_pricing_rate: 38000,
-    },
-    stageSpecs: {
-      structureType: "Heavy-Duty Aluminum Truss Box Frame",
-      dimensions: "20ft W x 12ft D x 10ft H",
-      platformIncluded: true,
-      lightingIncluded: true,
-      pricingType: "Fixed Price",
-      price: 38000,
-    },
-    components: [],
-  },
-  {
-    id: "setup-stage-royal",
-    sku: "STG-ROY-31",
-    name: "Royal Stage",
-    category: "Stage",
-    description: "Multi-tier floral stage arrangement with elevated gold square platform, fresh pink roses, warm spotlights, and regal lounge seating.",
-    imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?w=800&auto=format&fit=crop&q=80",
-    createdAt: "2026-03-20T10:00:00Z",
-    updatedAt: "2026-03-26T12:00:00Z",
-    bookingCount: 45,
-    total_price: 31000,
-    applicable_events: ["Engagement", "Wedding"],
-    specifications: {
-      applicable_events: ["Engagement"],
-      structure_type: "Multi-tier Platform",
-      dimensions: { width_ft: 16, height_ft: 12 },
-      flowers_used: true,
-      setup_styles: ["Rose Theme"],
-      flowers: [
-        {
-          inventory_item_id: "inv-rose-pink",
-          name: "Rose",
-          type: "natural",
-          colour: "Pink",
-        },
+        { name: "Marigold", colour: "Yellow", type: "natural" },
+        { name: "Rose", colour: "Red", type: "natural" },
       ],
       platforms_used: true,
-      platform_shape: "Square",
-      platform_colour: "Gold",
-      platform_height: 1.1,
-      platform_price: 10000,
+      platform_shape: "Octagonal Sacred Mandap Deck",
+      platform_colour: "Maroon",
+      platform_height: 1,
       lighting_used: true,
-      lighting_type: "Warm Spotlights",
       lighting: [
-        {
-          type: "Warm Spotlights",
-          quantity: 1,
-          unit: "piece",
-          price: 10000,
-        },
+        { type: "Warm Chandeliers", quantity: 2, unit: "piece" },
+        { type: "Warm Fairy String Lights", quantity: 6, unit: "piece" },
       ],
-      overall_lighting_price: 10000,
       furniture_used: true,
-      furniture_details: "Sofa",
-      furniture_price: 1000,
-      base_pricing_rate: 10000,
-      color_theme: ["#FFD700", "#FFC0CB"],
+      furniture_details: "2 Royal Carved Wooden Chairs & 4 Bajot low seats",
     },
-    stageSpecs: {
-      structureType: "Multi-tier Platform",
-      dimensions: "16ft W x 12ft H",
-      platformIncluded: false,
-      lightingIncluded: false,
+  },
+  {
+    id: "dec-c2-stage",
+    sku: "STG-LUXE-02",
+    name: "Luxe Floral Grand Reception Stage",
+    category: "Stage",
+    companyId: "company-2",
+    companyName: "Royal Orchid Events",
+    description: "Full luxe floral backdrop wall with pastel peonies, ambient fairy waterfall strings, and a raised velvet carpeted deck.",
+    imageUrl: "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80",
+    gallery: [
+      "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1520854221256-17451cc331bf?auto=format&fit=crop&w=800&q=80",
+    ],
+    status: "Live",
+    total_price: 65000,
+    createdAt: new Date().toISOString(),
+    applicable_events: ["Reception", "Wedding"],
+    specifications: {
+      structure_type: "Grand Reception Stage",
+      main_structure: "Grand Reception Stage",
+      setup_styles: ["Modern Luxe", "Pastel Romance"],
+      dimensions: { width_ft: 20, height_ft: 12 },
+      floral_tag: "with_flowers",
+      flowers_used: true,
+      flowers: [
+        { name: "Peonies & Hydrangeas", colour: "Blush Pink & Ivory", type: "mixed" },
+      ],
+      platforms_used: true,
+      platform_shape: "Carpeted Stage Platform",
+      platform_colour: "White",
+      platform_height: 1.5,
+      lighting_used: true,
+      lighting: [
+        { type: "LED Uplighting (RGB Par Cans)", quantity: 4, unit: "piece" },
+        { type: "Neon Ambient Flex Strips", quantity: 2, unit: "piece" },
+      ],
+    },
+  },
+  {
+    id: "dec-c2-fairy-lights-entrance",
+    sku: "ENT-CRYSTAL-03",
+    aliases: ["dec-c2-fairy-lights", "crystal-fairy-lights-entrance", "crystal-fairy-lights"],
+    name: "Crystal Fairy Lights Entrance",
+    category: "Entrance Gate",
+    companyId: "company-2",
+    companyName: "Royal Orchid Events",
+    description: "Grand entrance gateway with heavy-duty aluminum truss structure, cascading crystal chandeliers, and warm white fairy string light curtains for an enchanting guest welcome.",
+    imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
+    gallery: [
+      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80",
+    ],
+    status: "Live",
+    total_price: 45000,
+    priceUnit: "per setup",
+    createdAt: new Date().toISOString(),
+    applicable_events: ["Wedding", "Reception", "Sangeet"],
+    entranceGateSpecs: {
+      structureType: "Heavy-duty Aluminum Truss Structure",
+      compatibleEvents: ["Wedding", "Reception", "Sangeet"],
+      floralUsage: false,
       pricingType: "Fixed Price",
-      price: 31000,
+      price: 45000,
     },
-    components: [],
+    specifications: {
+      structure_type: "Heavy-duty Aluminum Truss Structure",
+      main_structure: "Heavy-duty Aluminum Truss Structure",
+      setup_styles: ["Glamour Crystal", "Warm Ambient"],
+      dimensions: { width_ft: 20, height_ft: 10 },
+      floral_tag: "structure_only",
+      flowers_used: false,
+      flowers: [],
+      lighting_used: true,
+      lighting: [
+        { type: "Crystal Chandeliers", quantity: 3, unit: "piece" },
+        { type: "Warm Fairy String Lights", quantity: 12, unit: "piece" },
+        { type: "Amber LED Uplighting", quantity: 4, unit: "piece" },
+      ],
+      price_unit: "per setup",
+      color_theme: ["Warm White", "Crystal Gold"],
+      applicable_events: ["Wedding", "Reception", "Sangeet"],
+    },
+    inclusions: [
+      "Heavy-duty Aluminum Truss Arch Gateway Frame (20 × 10 ft)",
+      "3 Tiered Cascading Crystal Glass Chandeliers",
+      "Warm White LED Fairy String Light Waterfall Curtains (12 Drops)",
+      "4 Amber LED Par Can Uplights for Atmospheric Glow",
+      "Ivory Sheer Drapes & Silk Ribbon Tie-backs",
+    ],
+  },
+  {
+    id: "dec-c2-fairy-lights",
+    sku: "LGT-CRYSTAL-03",
+    aliases: ["dec-c2-fairy-lights-entrance", "crystal-fairy-lights"],
+    name: "Crystal Fairy Lights",
+    category: "Entrance Gate",
+    companyId: "company-2",
+    companyName: "Royal Orchid Events",
+    description: "Grand entrance gateway with heavy-duty aluminum truss structure, cascading crystal chandeliers, and warm white fairy string light curtains for an enchanting guest welcome.",
+    imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
+    gallery: [
+      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80",
+    ],
+    status: "Live",
+    total_price: 45000,
+    priceUnit: "per setup",
+    createdAt: new Date().toISOString(),
+    applicable_events: ["Wedding", "Reception", "Sangeet"],
+    entranceGateSpecs: {
+      structureType: "Heavy-duty Aluminum Truss Structure",
+      compatibleEvents: ["Wedding", "Reception", "Sangeet"],
+      floralUsage: false,
+      pricingType: "Fixed Price",
+      price: 45000,
+    },
+    specifications: {
+      structure_type: "Heavy-duty Aluminum Truss Structure",
+      main_structure: "Heavy-duty Aluminum Truss Structure",
+      setup_styles: ["Glamour Crystal", "Warm Ambient"],
+      dimensions: { width_ft: 20, height_ft: 10 },
+      floral_tag: "structure_only",
+      flowers_used: false,
+      flowers: [],
+      lighting_used: true,
+      lighting: [
+        { type: "Crystal Chandeliers", quantity: 3, unit: "piece" },
+        { type: "Warm Fairy String Lights", quantity: 12, unit: "piece" },
+        { type: "Amber LED Uplighting", quantity: 4, unit: "piece" },
+      ],
+      price_unit: "per setup",
+      color_theme: ["Warm White", "Crystal Gold"],
+      applicable_events: ["Wedding", "Reception", "Sangeet"],
+    },
+    inclusions: [
+      "Heavy-duty Aluminum Truss Arch Gateway Frame (20 × 10 ft)",
+      "3 Tiered Cascading Crystal Glass Chandeliers",
+      "Warm White LED Fairy String Light Waterfall Curtains (12 Drops)",
+      "4 Amber LED Par Can Uplights for Atmospheric Glow",
+      "Ivory Sheer Drapes & Silk Ribbon Tie-backs",
+    ],
   },
 ];
+
+const DUMMY_SETUP_IDS = new Set([
+  "setup-gate-1",
+  "setup-backdrop-1",
+  "setup-stage-royal-classic",
+  "setup-stage-box-truss",
+  "setup-stage-royal",
+  "setup-mandap-1",
+]);
 
 const STORAGE_KEY = "decoration-portal:decoration-setups";
 export const STORAGE_KEY_COMPONENTS = "decoration-portal:decoration-components";
 export const STORAGE_KEY_QUOTATIONS_COUNT = "decoration-portal:setup-quotations";
+export const STORAGE_KEY_DELETED = "decoration-portal:deleted-setups";
+
+export function loadDeletedSetupIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_DELETED);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function recordDeletedSetupId(id: string) {
+  if (typeof window === "undefined" || !id) return;
+  try {
+    const set = loadDeletedSetupIds();
+    set.add(id);
+    window.localStorage.setItem(STORAGE_KEY_DELETED, JSON.stringify([...set]));
+  } catch {}
+}
 
 export function loadSetupQuotationCounts(): Record<string, number> {
   if (typeof window === "undefined") return {};
@@ -925,71 +670,379 @@ export function saveStoredComponents(componentsMap: Record<string, DecorationCom
 export function loadStoredSetups(): DecorationSetupItem[] {
   if (typeof window === "undefined") return INITIAL_DECORATION_SETUPS;
   try {
+    const deletedIds = loadDeletedSetupIds();
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    const standaloneMap = loadStoredComponents();
-
     if (!raw) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_DECORATION_SETUPS));
-      // Also seed standalone components map
-      const initialMap: Record<string, DecorationComponent[]> = {};
-      INITIAL_DECORATION_SETUPS.forEach((s) => {
-        if (s.components) initialMap[s.id] = s.components;
-      });
-      saveStoredComponents(initialMap);
-      return INITIAL_DECORATION_SETUPS;
+      const initial = INITIAL_DECORATION_SETUPS.filter((s) => !deletedIds.has(s.id));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
+      return initial;
     }
 
-    const parsed = JSON.parse(raw) as (DecorationSetupItem & {
-      title?: string;
-      primaryImage?: string;
-      compatibleEvents?: string[];
-      gallery?: string[];
-    })[];
-    // Backfill components and normalize properties if missing in older/wizard localStorage entries
-    const normalized = parsed.map((s, idx) => {
-      const name = s.name || s.title || "Custom Decoration Setup";
-      const imageUrl =
-        s.imageUrl ||
-        s.primaryImage ||
-        s.gallery?.[0] ||
-        "https://images.unsplash.com/photo-1519741497674-611481863552?w=800&auto=format&fit=crop&q=80";
-      const sku = s.sku || `DEC-${String(100 + idx).padStart(3, "0")}`;
-      const applicable_events = s.applicable_events || s.compatibleEvents || ["Wedding"];
+    const parsed = JSON.parse(raw) as DecorationSetupItem[];
+    if (Array.isArray(parsed)) {
+      const cleaned = parsed.filter((s) => !DUMMY_SETUP_IDS.has(s.id) && !deletedIds.has(s.id));
+      let hadMigration = false;
+      const migrated = cleaned.map((s) => {
+        let changed = false;
+        let cId = s.companyId;
+        let cName = s.companyName;
+        if (!cId || cId === "comp-1") {
+          cId = DEFAULT_COMPANY_ID;
+          changed = true;
+        } else if (cId === "comp-2") {
+          cId = "company-2";
+          changed = true;
+        }
+        if (!cName || cName === "Company 1") {
+          cName = getCompanyNameById(cId);
+          changed = true;
+        }
+        if (changed) hadMigration = true;
+        return changed ? { ...s, companyId: cId, companyName: cName } : s;
+      });
 
-      let components = s.components;
-      if (!components || components.length === 0) {
-        const standalone = standaloneMap[s.id];
-        if (standalone && standalone.length > 0) {
-          components = standalone;
-        } else {
-          const defaultSetup = INITIAL_DECORATION_SETUPS.find((init) => init.id === s.id);
-          if (defaultSetup?.components) components = defaultSetup.components;
+      // Synchronize missing canonical presets from INITIAL_DECORATION_SETUPS (unless deleted)
+      const missing = INITIAL_DECORATION_SETUPS.filter(
+        (s) => !migrated.some((m) => m.id === s.id) && !deletedIds.has(s.id)
+      );
+      if (missing.length > 0) {
+        migrated.push(...missing);
+        hadMigration = true;
+      }
+
+      // Also ensure existing presets have rich specs and gallery if cached from earlier sessions
+      for (const initial of INITIAL_DECORATION_SETUPS) {
+        const existing = migrated.find((m) => m.id === initial.id);
+        if (existing && (!existing.specifications || !existing.gallery?.length || !existing.inclusions?.length)) {
+          Object.assign(existing, {
+            ...initial,
+            ...existing,
+            aliases: initial.aliases || existing.aliases,
+            inclusions: (existing.inclusions && existing.inclusions.length > 0) ? existing.inclusions : initial.inclusions,
+            specifications: existing.specifications || initial.specifications,
+            entranceGateSpecs: existing.entranceGateSpecs || initial.entranceGateSpecs,
+            mandapSpecs: existing.mandapSpecs || initial.mandapSpecs,
+            stageSpecs: existing.stageSpecs || initial.stageSpecs,
+            gallery: (existing.gallery && existing.gallery.length > 0) ? existing.gallery : initial.gallery,
+          });
+          hadMigration = true;
         }
       }
 
-      const defaultSetup = INITIAL_DECORATION_SETUPS.find((init) => init.id === s.id);
-      const updatedAt = s.updatedAt || defaultSetup?.updatedAt || s.createdAt;
-      const bookingCount = typeof s.bookingCount === "number" ? s.bookingCount : (defaultSetup?.bookingCount ?? 0);
-
-      return {
-        ...s,
-        name,
-        imageUrl,
-        sku,
-        applicable_events,
-        components,
-        updatedAt,
-        bookingCount,
-      };
-    });
-
-    const missingDefaults = INITIAL_DECORATION_SETUPS.filter(
-      (init) => !parsed.some((p) => p.id === init.id)
-    );
-    return [...normalized, ...missingDefaults];
+      if (cleaned.length !== parsed.length || hadMigration) {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      }
+      return migrated;
+    }
+    return INITIAL_DECORATION_SETUPS;
   } catch {
     return INITIAL_DECORATION_SETUPS;
   }
+}
+
+export interface PublicDecorationRecord {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  price: number;
+  priceUnit?: string | undefined;
+  photo?: string | undefined;
+  gallery: string[];
+  inclusions: string[];
+  style?: string | undefined;
+  theme?: string | undefined;
+  colours?: string | undefined;
+  size?: string | undefined;
+  dimensions?: string | undefined;
+  structure?: string | undefined;
+  lighting?: string | undefined;
+  platform?: string | undefined;
+  flowers?: string | undefined;
+  seating?: string | undefined;
+  customText?: string | undefined;
+  events?: string | undefined;
+  companyId: string;
+  companyName: string;
+  entranceGateSpecs?: EntranceGateSpecs | undefined;
+  welcomeBoardSpecs?: WelcomeBoardSpecs | undefined;
+  mandapSpecs?: MandapSpecs | undefined;
+  backdropSpecs?: BackdropSpecs | undefined;
+  stageSpecs?: StageSpecs | undefined;
+}
+
+/**
+ * Builds public inclusions and category-specific fields for EVERY decoration category
+ * (Stage, Entrance Gate, Mandap, Welcome Board, Backdrop, Table, Floral, Lighting, etc.)
+ */
+export function extractPublicCategoryDetails(found: any) {
+  const inclusions: string[] = [];
+  if (Array.isArray(found.inclusions) && found.inclusions.length > 0) {
+    inclusions.push(...found.inclusions.filter((x: any) => typeof x === "string" && Boolean(x.trim())));
+  }
+
+  const specs = found.specifications || {};
+
+  // 1. Structure / Frame
+  let structure: string | undefined = undefined;
+  if (specs.main_structure?.trim()) structure = specs.main_structure.trim();
+  else if (specs.structure_type?.trim()) structure = specs.structure_type.trim();
+  else if (found.entranceGateSpecs?.structureType?.trim()) structure = found.entranceGateSpecs.structureType.trim();
+  else if (found.mandapSpecs?.structureType?.trim()) structure = found.mandapSpecs.structureType.trim();
+  else if (found.stageSpecs?.structureType?.trim()) structure = found.stageSpecs.structureType.trim();
+  else if (found.welcomeBoardSpecs?.materialType?.trim()) structure = found.welcomeBoardSpecs.materialType.trim();
+  else if (found.backdropSpecs?.backdropStyle?.trim()) structure = found.backdropSpecs.backdropStyle.trim();
+
+  // 2. Flowers / Floral
+  let flowers: string | undefined = undefined;
+  const hasFloral = Boolean(
+    specs.floral_tag === "with_flowers" ||
+    specs.flowers_used ||
+    found.entranceGateSpecs?.floralUsage ||
+    found.mandapSpecs?.floralUsage
+  );
+  if (hasFloral) {
+    if (Array.isArray(specs.flowers) && specs.flowers.length > 0) {
+      flowers = specs.flowers
+        .map((f: any) => `${f.name || "Flower"}${f.colour ? ` (${f.colour})` : ""}`)
+        .join(", ");
+    } else if (found.entranceGateSpecs?.floralType) {
+      flowers = found.entranceGateSpecs.floralType;
+    } else if (found.mandapSpecs?.floralType) {
+      flowers = found.mandapSpecs.floralType;
+    } else {
+      flowers = "Fresh & Silk Floral Arrangement Included";
+    }
+  }
+
+  // 3. Platform / Deck
+  let platform: string | undefined = undefined;
+  if (specs.platforms_used || specs.mandap_platform_used || found.stageSpecs?.platformIncluded) {
+    const parts = [
+      specs.mandap_platform_type || specs.platform_shape || (found.stageSpecs?.platformIncluded ? "Stage Platform" : "Raised Deck"),
+      specs.platform_colour ? `(${specs.platform_colour})` : specs.mandap_platform_colour ? `(${specs.mandap_platform_colour})` : "",
+      specs.platform_height ? `${specs.platform_height}ft height` : specs.mandap_platform_height ? `${specs.mandap_platform_height}ft height` : "",
+    ].filter(Boolean);
+    platform = parts.join(" ") || "Raised Platform Deck";
+  }
+
+  // 4. Lighting
+  let lighting: string | undefined = undefined;
+  if (specs.lighting_used || found.backdropSpecs?.integratedLighting || found.stageSpecs?.lightingIncluded) {
+    if (Array.isArray(specs.lighting) && specs.lighting.length > 0) {
+      lighting = specs.lighting
+        .map((l: any) => `${l.type || "Lighting"}${l.quantity ? ` × ${l.quantity}${l.unit ? ` ${l.unit}` : ""}` : ""}`)
+        .join(", ");
+    } else {
+      lighting = "Integrated Ambient Lighting & Spotlights";
+    }
+  }
+
+  // 5. Furniture / Seating
+  let seating: string | undefined = undefined;
+  if (specs.furniture_used && specs.furniture_details?.trim()) {
+    seating = specs.furniture_details.trim();
+  } else if (found.mandapSpecs?.seatingIncluded) {
+    seating = "2 Royal Wooden Chairs & 4 Low Seating Bajot";
+  }
+
+  // 6. Custom Text / Personalization (Welcome Board)
+  let customText: string | undefined = undefined;
+  if (found.welcomeBoardSpecs?.customTextAllowed) {
+    customText = found.welcomeBoardSpecs.personalizationNotes?.trim() || "Custom Couple Names & Event Date Vinyl Print";
+  }
+
+  // 7. Applicable Events
+  let events: string | undefined = undefined;
+  const evList = found.applicable_events || specs.applicable_events || found.entranceGateSpecs?.compatibleEvents;
+  if (Array.isArray(evList) && evList.length > 0) {
+    events = evList.join(", ");
+  }
+
+  // If inclusions was not explicitly given, synthesize from the extracted category specs
+  if (inclusions.length === 0) {
+    if (structure) inclusions.push(`Structure / Frame: ${structure}`);
+    if (flowers) inclusions.push(`Floral Work: ${flowers}`);
+    if (platform) inclusions.push(`Platform: ${platform}`);
+    if (lighting) inclusions.push(`Lighting: ${lighting}`);
+    if (seating) inclusions.push(`Seating / Furniture: ${seating}`);
+    if (customText) inclusions.push(`Personalization: ${customText}`);
+  }
+
+  return {
+    inclusions,
+    structure,
+    platform,
+    lighting,
+    flowers,
+    seating,
+    customText,
+    events,
+  };
+}
+
+/**
+ * Looks up a decoration in the shared catalogue (which includes every company's decorations)
+ * through the repository layer.
+ * Strips out private/internal fields (internal costs, BOM items, profit margins, internal notes)
+ * and returns only the public catalogue fields shown to clients.
+ */
+export function getSharedPublicDecoration(
+  decId?: string | null,
+  contextItem?: any
+): PublicDecorationRecord | null {
+  if (!decId && !contextItem) return null;
+
+  const targetId = String(decId || contextItem?.decorationId || contextItem?.id || "").trim().toLowerCase();
+  const targetName = String(contextItem?.name || contextItem?.title || "").trim().toLowerCase();
+  const deletedIds = loadDeletedSetupIds();
+
+  // 1. Shared catalogue in localStorage (includes all companies' live & saved setups)
+  const stored = loadStoredSetups();
+
+  // Matcher function supporting ID normalization, SKU, aliases, cross-id mappings, and names
+  const matchSetup = (s: any) => {
+    if (deletedIds.has(s.id)) return false;
+    const sId = String(s.id).trim().toLowerCase();
+    const sSku = String(s.sku || "").trim().toLowerCase();
+    const sName = String(s.name || "").trim().toLowerCase();
+
+    // Exact ID or SKU match
+    if (targetId && (sId === targetId || sSku === targetId)) return true;
+
+    // Aliases match
+    if (targetId && Array.isArray(s.aliases) && s.aliases.some((a: string) => a.trim().toLowerCase() === targetId)) {
+      return true;
+    }
+
+    // Cross-match fairy lights IDs and variations
+    if (
+      (targetId === "dec-c2-fairy-lights" && sId === "dec-c2-fairy-lights-entrance") ||
+      (targetId === "dec-c2-fairy-lights-entrance" && sId === "dec-c2-fairy-lights") ||
+      (targetId === "crystal-fairy-lights" && (sId === "dec-c2-fairy-lights" || sId === "dec-c2-fairy-lights-entrance")) ||
+      (targetId === "crystal-fairy-lights-entrance" && (sId === "dec-c2-fairy-lights" || sId === "dec-c2-fairy-lights-entrance"))
+    ) {
+      return true;
+    }
+
+    // Name match
+    if (targetName && sName) {
+      if (sName === targetName) return true;
+      if (
+        (targetName.includes("crystal fairy lights") && sName.includes("crystal fairy lights")) ||
+        (targetName.includes("carved wooden mandap") && sName.includes("carved wooden mandap")) ||
+        (targetName.includes("luxe floral grand") && sName.includes("luxe floral grand"))
+      ) {
+        return true;
+      }
+    }
+
+    // Slug match
+    const slug = sName.replace(/[^a-z0-9]+/g, "-");
+    if (targetId && slug === targetId) return true;
+
+    return false;
+  };
+
+  let found: any = stored.find(matchSetup);
+
+  // 2. Fallback to static seed presets if not in localStorage
+  if (!found) {
+    found = INITIAL_DECORATION_SETUPS.find(matchSetup);
+  }
+
+  if (!found) return null;
+
+  // Extract public details using the shared category-agnostic logic
+  const catDetails = extractPublicCategoryDetails(found);
+
+  // Cover photo and gallery
+  const photo = found.imageUrl || (Array.isArray(found.gallery) ? found.gallery[0] : undefined);
+  const rawGallery = Array.isArray(found.gallery) && found.gallery.length > 0
+    ? found.gallery
+    : (photo ? [photo] : []);
+  const gallery: string[] = Array.from(
+    new Set(rawGallery.filter((u: any): u is string => typeof u === "string" && Boolean(u.trim())))
+  );
+
+  // Price and priceUnit
+  const price = Number(found.total_price ?? found.specifications?.base_pricing_rate ?? found.price) || 0;
+  const priceUnit = found.priceUnit || (found.specifications as any)?.price_unit || "per setup";
+
+  // Style
+  let style: string | undefined = undefined;
+  if (found.style?.trim()) {
+    style = found.style.trim();
+  } else if (Array.isArray(found.specifications?.setup_styles) && found.specifications.setup_styles.length > 0) {
+    style = found.specifications.setup_styles.join(", ");
+  } else if (found.backdropSpecs?.backdropStyle) {
+    style = found.backdropSpecs.backdropStyle;
+  }
+
+  // Colours
+  let colours: string | undefined = undefined;
+  if (found.colours?.trim()) {
+    colours = found.colours.trim();
+  } else if (Array.isArray(found.specifications?.color_theme) && found.specifications.color_theme.length > 0) {
+    colours = found.specifications.color_theme.join(", ");
+  } else if (Array.isArray(found.specifications?.flowers) && found.specifications.flowers.length > 0) {
+    const clr = [...new Set(found.specifications.flowers.map((f: any) => f.colour).filter(Boolean))];
+    if (clr.length > 0) colours = clr.join(", ");
+  }
+
+  // Dimensions / Size
+  let size: string | undefined = undefined;
+  if (found.dimensions?.trim()) {
+    size = found.dimensions.trim();
+  } else if (found.size?.trim()) {
+    size = found.size.trim();
+  } else if (found.specifications?.dimensions?.width_ft && found.specifications?.dimensions?.height_ft) {
+    size = `${found.specifications.dimensions.width_ft} × ${found.specifications.dimensions.height_ft} ft`;
+  } else if (found.backdropSpecs?.dimensions) {
+    size = found.backdropSpecs.dimensions;
+  } else if (found.stageSpecs?.dimensions) {
+    size = found.stageSpecs.dimensions;
+  }
+
+  let compId = found.companyId || "company-1";
+  if (compId === "comp-1") compId = "company-1";
+  if (compId === "comp-2") compId = "company-2";
+
+  let compName = found.companyName;
+  if (!compName || compName === "Company 1") {
+    compName = getCompanyNameById(compId);
+  }
+
+  return {
+    id: found.id,
+    name: found.name || "Decoration Setup",
+    category: found.category || "Stage",
+    description: found.description || "",
+    price,
+    priceUnit,
+    photo,
+    gallery,
+    inclusions: catDetails.inclusions,
+    style,
+    theme: found.theme || undefined,
+    colours,
+    size,
+    dimensions: size,
+    structure: catDetails.structure,
+    platform: catDetails.platform,
+    lighting: catDetails.lighting,
+    flowers: catDetails.flowers,
+    seating: catDetails.seating,
+    customText: catDetails.customText,
+    events: catDetails.events,
+    companyId: compId,
+    companyName: compName,
+    entranceGateSpecs: found.entranceGateSpecs,
+    welcomeBoardSpecs: found.welcomeBoardSpecs,
+    mandapSpecs: found.mandapSpecs,
+    backdropSpecs: found.backdropSpecs,
+    stageSpecs: found.stageSpecs,
+  };
 }
 
 export async function compressImage(
@@ -1043,6 +1096,7 @@ export async function compressImage(
 }
 
 export function saveStoredSetups(setups: DecorationSetupItem[]) {
+  setups = setups.filter((s) => !DUMMY_SETUP_IDS.has(s.id));
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(setups));
@@ -1077,33 +1131,49 @@ export function saveStoredSetups(setups: DecorationSetupItem[]) {
 }
 
 export function useDecorationSetupsStore() {
-  const [setups, setSetups] = useState<DecorationSetupItem[]>(() => {
-    return loadStoredSetups();
-  });
-  const [isLoaded, setIsLoaded] = useState(true);
+  const [setups, setSetups] = useState<DecorationSetupItem[]>(loadStoredSetups);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    // Initial fetch from Supabase
+    fetchDecorationsFromSupabase().then((data) => {
+      if (data && data.length >= 0) {
+        setSetups(data);
+        saveStoredSetups(data);
+      }
+      setIsLoaded(true);
+    });
+
+    // Shared Supabase Realtime Subscription
+    const unsubscribe = subscribeToDecorationsRealtime(() => {
+      fetchDecorationsFromSupabase().then((data) => {
+        setSetups(data);
+        saveStoredSetups(data);
+      });
+    });
+
     const handleSync = () => {
       setSetups(loadStoredSetups());
-      setIsLoaded(true);
     };
-    handleSync();
 
-    if (typeof window !== "undefined") {
-      window.addEventListener("storage", handleSync);
-      window.addEventListener("decoration-setups-updated", handleSync);
-      return () => {
-        window.removeEventListener("storage", handleSync);
-        window.removeEventListener("decoration-setups-updated", handleSync);
-      };
-    }
-    return undefined;
+    window.addEventListener("storage", handleSync);
+    window.addEventListener("decoration-setups-updated", handleSync);
+
+    return () => {
+      window.removeEventListener("storage", handleSync);
+      window.removeEventListener("decoration-setups-updated", handleSync);
+      unsubscribe();
+    };
   }, []);
 
   const addSetup = (setup: Omit<DecorationSetupItem, "id" | "createdAt">) => {
+    const compId = setup.companyId || getCurrentCompanyId();
+    const compName = setup.companyName || getCompanyNameById(compId);
     const newSetup: DecorationSetupItem = {
       ...setup,
       id: `setup-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      companyId: compId,
+      companyName: compName,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       bookingCount: setup.bookingCount ?? 0,
@@ -1119,19 +1189,34 @@ export function useDecorationSetupsStore() {
       saveStoredComponents(compMap);
     }
 
+    void upsertDecorationInSupabase(newSetup);
     return newSetup;
   };
 
   const updateSetup = (id: string, updatedFields: Partial<DecorationSetupItem>) => {
     const current = loadStoredSetups();
     const updated = current.map((item) =>
-      item.id === id ? { ...item, ...updatedFields, updatedAt: new Date().toISOString() } : item
+      item.id === id
+        ? {
+            ...item,
+            ...updatedFields,
+            companyId: updatedFields.companyId || item.companyId || getCurrentCompanyId(),
+            companyName:
+              updatedFields.companyName ||
+              item.companyName ||
+              getCompanyNameById(updatedFields.companyId || item.companyId || getCurrentCompanyId()),
+            updatedAt: new Date().toISOString(),
+          }
+        : item
     );
     setSetups(updated);
     saveStoredSetups(updated);
+    const target = updated.find((item) => item.id === id);
+    if (target) void upsertDecorationInSupabase(target);
   };
 
   const deleteSetup = (id: string) => {
+    recordDeletedSetupId(id);
     const updated = setups.filter((s) => s.id !== id);
     setSetups(updated);
     saveStoredSetups(updated);
@@ -1141,6 +1226,7 @@ export function useDecorationSetupsStore() {
       delete compMap[id];
       saveStoredComponents(compMap);
     }
+    void deleteDecorationFromSupabase(id);
   };
 
   /**
@@ -1167,8 +1253,8 @@ export function useDecorationSetupsStore() {
   };
 
   const resetSetups = () => {
-    setSetups(INITIAL_DECORATION_SETUPS);
-    saveStoredSetups(INITIAL_DECORATION_SETUPS);
+    setSetups([]);
+    saveStoredSetups([]);
     const initialMap: Record<string, DecorationComponent[]> = {};
     INITIAL_DECORATION_SETUPS.forEach((s) => {
       if (s.components) initialMap[s.id] = s.components;

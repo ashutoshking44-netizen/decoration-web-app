@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { fetchPaymentQrsFromSupabase, savePaymentQrsToSupabase } from "./supabase-service";
 
 /** Payment QR codes the studio shows to clients (eSewa, Fonepay, bank…). Max 4. */
 export interface PaymentQr {
@@ -9,7 +10,7 @@ export interface PaymentQr {
   label: string;
   /** Account number (optional) */
   accountNumber?: string | undefined;
-  /** Image data URL */
+  /** Image data URL or public URL */
   image: string;
 }
 
@@ -39,11 +40,29 @@ export function savePaymentQrs(list: PaymentQr[]): boolean {
 }
 
 export function usePaymentQrs() {
-  const [qrs, setQrs] = useState<PaymentQr[]>([]);
-  useEffect(() => setQrs(loadPaymentQrs()), []);
+  const [qrs, setQrs] = useState<PaymentQr[]>(loadPaymentQrs);
+
+  useEffect(() => {
+    // Initial fetch from Supabase
+    fetchPaymentQrsFromSupabase().then((data) => {
+      if (data && data.length > 0) {
+        setQrs(data);
+        savePaymentQrs(data);
+      } else {
+        const local = loadPaymentQrs();
+        if (local.length > 0) {
+          void savePaymentQrsToSupabase(local);
+        }
+      }
+    });
+  }, []);
+
   const update = useCallback((next: PaymentQr[]): boolean => {
     setQrs(next);
-    return savePaymentQrs(next);
+    savePaymentQrs(next);
+    void savePaymentQrsToSupabase(next);
+    return true;
   }, []);
+
   return { qrs, update };
 }

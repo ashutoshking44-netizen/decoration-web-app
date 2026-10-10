@@ -11,6 +11,9 @@ export default defineConfig({
     server: {
       host: true,
       allowedHosts: true,
+      watch: {
+        ignored: ["**/server/data/**", "**/server/data/uploads/**"],
+      },
     },
   },
   tanstackStart: {

@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { BookedClient, ClientCeremonyItem } from "@/lib/clients";
+import { buildProposalMessage, proposalCeremonies, proposalTotal } from "@/lib/proposal-message";
 import { useCompanyProfile } from "@/lib/company-profile";
 
 export interface ProposalDispatchModalProps {
@@ -56,73 +57,22 @@ export function ProposalDispatchModal({
     return `https://decorportal.com/proposal/${proposalId}`;
   }, [proposalId]);
 
-  // Ceremonies list
-  const ceremonies: ClientCeremonyItem[] = useMemo(() => {
-    if (!client?.ceremonies || client.ceremonies.length === 0) {
-      return [
-        {
-          id: "c-default",
-          name: client?.event_type || "Wedding Ceremony",
-          date: client?.event_date || "Event Date",
-          venue: client?.venue || "Venue On Record",
-          setupName: client?.decorations?.[0]?.name || "Custom Royal Stage Setup",
-          setupPrice: client?.total_amount || 65000,
-          category: client?.decorations?.[0]?.type || "Stage",
-          setupImage: "https://images.unsplash.com/photo-1519741497674-611481863552?w=400&auto=format&fit=crop&q=80",
-        },
-      ];
-    }
-    return client.ceremonies;
-  }, [client]);
-
-  // Grand total in NPR
-  const grandTotalNpr = useMemo(() => {
-    if (!client) return 0;
-    const sumCeremonies = ceremonies.reduce(
-      (sum, c) => sum + (Number(c.setupPrice) || 0),
-      0
-    );
-    return sumCeremonies > 0 ? sumCeremonies : client.total_amount;
-  }, [client, ceremonies]);
-
-  // Automated WhatsApp Message Content
-  const automatedMessage = useMemo(() => {
-    if (!client) return "";
-    const companyName = profile?.name || "Decoration Portal Studio";
-    const companyPhone = profile?.phone || "+977 9801234567";
-
-    const ceremonyLines = ceremonies
-      .map((c, i) => {
-        const setup = c.setupName ? `*${c.setupName}* (${c.category || "Decor"})` : "*Custom Designed Setup*";
-        const price = c.setupPrice ? ` — Rs. ${Number(c.setupPrice).toLocaleString()}` : "";
-        return `• *${c.name}* (${c.date})\n  📍 ${c.venue}\n  ✨ Setup: ${setup}${price}`;
-      })
-      .join("\n\n");
-
-    return `🌸 *NAMASTE ${client.client_name.toUpperCase()}!* 🌸
-Warmest greetings from *${companyName}*.
-
-We have curated your customized, multi-ceremony wedding decoration proposal based on your preferences:
-
-━━━━━━━━━━━━━━━━━━━━━━
-💍 *WEDDING CEREMONY ITINERARY & SETUPS:*
-━━━━━━━━━━━━━━━━━━━━━━
-${ceremonyLines}
-
-━━━━━━━━━━━━━━━━━━━━━━
-💎 *COMBINED GRAND TOTAL:* Rs. ${grandTotalNpr.toLocaleString()}
-━━━━━━━━━━━━━━━━━━━━━━
-
-🔗 *VIEW YOUR LIVE INTERACTIVE PROPOSAL:*
-${proposalUrl}
-_(Includes high-res moodboards, setup dimensions, floral recipes & booking breakdown)_
-
-To confirm your dates or request bespoke styling modifications, simply reply to this message. We would be honored to craft your milestone journey!
-
-Warm regards,
-*${client.handler ? client.handler : "Events Team"}*
-${companyName} | 📞 ${companyPhone}`;
-  }, [client, ceremonies, grandTotalNpr, proposalUrl, profile]);
+  // Ceremonies, total and WhatsApp text come from the shared helper so the
+  // booked-client cards copy exactly the same message.
+  const ceremonies: ClientCeremonyItem[] = useMemo(() => proposalCeremonies(client), [client]);
+  const grandTotalNpr = useMemo(() => proposalTotal(client, ceremonies), [client, ceremonies]);
+  const automatedMessage = useMemo(
+    () =>
+      client
+        ? buildProposalMessage(
+            client,
+            proposalUrl,
+            profile?.name || "Decoration Portal Studio",
+            profile?.phone || "+977 9801234567",
+          )
+        : "",
+    [client, proposalUrl, profile],
+  );
 
   if (!client) return null;
 

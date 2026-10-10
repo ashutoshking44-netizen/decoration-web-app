@@ -12,6 +12,7 @@ import {
   Check,
 } from "lucide-react";
 import type { BookedClient, ClientCeremonyItem } from "@/lib/clients";
+import { ceremoniesFromEnquiry, loadStoredEnquiries } from "@/lib/enquiries";
 import { useCompanyProfile } from "@/lib/company-profile";
 import { usePaymentQrs } from "@/lib/payment-qr";
 import { compressImage } from "@/lib/photographer-gallery";
@@ -77,7 +78,7 @@ export function parseCeremonyDate(rawDate: string): { bs: string; ad: string } {
 
 export function assertNoSampleDataRendered(days: DaySchedule[], clientName?: string) {
   const isDev =
-    Boolean(import.meta.env?.DEV) ||
+    Boolean(import.meta.env.DEV) ||
     (typeof process !== "undefined" && Boolean(process.env) && process.env["NODE_ENV"] !== "production");
   if (isDev) {
     const FORBIDDEN_NAMES = ["Shivam & Gauri", "Shivam and Gauri"];
@@ -120,74 +121,6 @@ const npr = (n: number) => {
   return rest + "," + last3;
 };
 
-function Slider({ photos }: { photos: { src: string; cap: string; g: string }[] }) {
-  const [i, setI] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const go = (n: number) => {
-    const el = ref.current;
-    if (!el || photos.length === 0) return;
-    const k = (n + photos.length) % photos.length;
-    el.scrollTo({ left: k * el.clientWidth, behavior: "smooth" });
-  };
-
-  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    if (el.clientWidth > 0) {
-      setI(Math.round(el.scrollLeft / el.clientWidth));
-    }
-  };
-
-  if (photos.length === 0) return null;
-
-  return (
-    <div className="dp-slider">
-      <h5 className="dp-slabel">DÉCOR GALLERY</h5>
-      <div style={{ position: "relative" }}>
-        <div className="dp-strack" ref={ref} onScroll={onScroll}>
-          {photos.map((p, k) => (
-            <div className={"dp-slide " + (p.src ? "" : p.g)} key={k}>
-              {p.src ? (
-                <img src={p.src} alt={p.cap} loading="lazy" />
-              ) : (
-                <span className="dp-ph">reference look</span>
-              )}
-              <span className="dp-cap">{p.cap}</span>
-            </div>
-          ))}
-        </div>
-        {photos.length > 1 && (
-          <>
-            <button
-              type="button"
-              className="dp-snav prev"
-              onClick={() => go(i - 1)}
-              aria-label="Previous photo"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              className="dp-snav next"
-              onClick={() => go(i + 1)}
-              aria-label="Next photo"
-            >
-              ›
-            </button>
-          </>
-        )}
-      </div>
-      {photos.length > 1 && (
-        <div className="dp-sdots">
-          {photos.map((_, k) => (
-            <i key={k} className={k === i ? "on" : ""} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function DayCard({
   d,
   open,
@@ -218,21 +151,58 @@ function DayCard({
         <span className={"dp-chev" + (open ? " open" : "")}>⌄</span>
       </button>
 
-      {!open && (
-        <div className="dp-countpill">
-          🎀 {count} décor {count === 1 ? "element" : "elements"} · NPR {formatNepaliNumber(total)}
+      {d.items.length > 0 && (
+        <>
+        <div className="dp-minilist" aria-label="Decorations for this event">
+          {d.items.map((it, k) => {
+            const bd = getDecorItemBreakdown(it);
+            return (
+              <button
+                type="button"
+                key={k}
+                className={"dp-miniitem" + (open && expandedItemIndex === k ? " on" : "")}
+                onClick={() => {
+                  // tapping the open photo again hides its details
+                  setExpandedItemIndex(open && expandedItemIndex === k ? null : k);
+                  if (!open) onToggle();
+                }}
+                aria-label={`View details of ${bd.itemName}`}
+              >
+                <span
+                  className="dp-minicard-photo"
+                  style={bd.imageUrl ? { backgroundImage: `url(${bd.imageUrl})` } : undefined}
+                />
+                <span className="dp-minitext">
+                  <b>{bd.itemName}</b>
+                  <small>{it.p > 0 ? `NPR ${formatNepaliNumber(it.p)}` : it.pending ? "To be confirmed" : "Included"}</small>
+                </span>
+              </button>
+            );
+          })}
         </div>
+        {!open && count > 1 && (
+          <div className="dp-countpill">
+            🎀 {count} décor elements · NPR {formatNepaliNumber(total)} · swipe to see all
+          </div>
+        )}
+        </>
       )}
 
       {open && (
         <>
           <div className="dp-items">
+            {d.items.length > 0 && expandedItemIndex === null && (
+              <div style={{ padding: "6px 0 10px", textAlign: "center", color: "var(--ink-2)", fontSize: "13px" }}>
+                Tap a photo above to see its details
+              </div>
+            )}
             {d.items.length === 0 ? (
               <div style={{ padding: "16px", textAlign: "center", color: "var(--dp-ink-2)", fontSize: "13px" }}>
                 No décor elements selected for this event
               </div>
             ) : (
               d.items.map((i, k) => {
+                if (k !== expandedItemIndex) return null;
                 const breakdown = getDecorItemBreakdown(i);
               const isExpanded = expandedItemIndex === k;
               const hasBreakdownData = Boolean(
@@ -297,14 +267,6 @@ function DayCard({
                   {/* Expanded Breakdown Block */}
                   {isExpanded && (
                     <div className="dp-breakdown-card">
-                      {/* Photo preview if present */}
-                      {breakdown.imageUrl && (
-                        <div className="dp-bd-photo-preview">
-                          <img src={breakdown.imageUrl} alt={breakdown.itemName} loading="lazy" />
-                          <span className="dp-bd-photo-tag">{breakdown.itemName} Design Look</span>
-                        </div>
-                      )}
-
                       {/* 1. Structure */}
                       {breakdown.structure && (
                         <div className="dp-bd-section">
@@ -320,10 +282,6 @@ function DayCard({
                                 <span className="dp-bd-v">{breakdown.structure.dimensions}</span>
                               </div>
                             )}
-                            <div className="dp-bd-kv">
-                              <span className="dp-bd-k">Applicable Events:</span>
-                              <span className="dp-bd-v">{breakdown.structure.applicableEvents}</span>
-                            </div>
                           </div>
                         </div>
                       )}
@@ -407,16 +365,18 @@ function DayCard({
                         </div>
                       )}
 
-                      {/* 5. Total row */}
-                      <div className="dp-bd-total-row">
-                        <div>
-                          <div className="dp-bd-total-name">{breakdown.totalRow.label}</div>
-                          <div className="dp-bd-total-note">{breakdown.totalRow.note}</div>
+                      {/* 5. Total row (skipped when the day has one item: DAY TOTAL says the same) */}
+                      {d.items.length > 1 && (
+                        <div className="dp-bd-total-row">
+                          <div>
+                            <div className="dp-bd-total-name">{breakdown.totalRow.label}</div>
+                            <div className="dp-bd-total-note">{breakdown.totalRow.note}</div>
+                          </div>
+                          <div className="dp-bd-total-price">
+                            NPR {formatNepaliNumber(breakdown.totalRow.price)}
+                          </div>
                         </div>
-                        <div className="dp-bd-total-price">
-                          NPR {formatNepaliNumber(breakdown.totalRow.price)}
-                        </div>
-                      </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -443,7 +403,6 @@ function DayCard({
         </>
       )}
 
-      {d.photos && d.photos.length > 0 && <Slider photos={d.photos} />}
     </div>
   );
 }
@@ -664,8 +623,18 @@ export function DecorationProposalView({
   // Map real client ceremonies to schedule days. NO sample DAYS fallback!
   const days: DaySchedule[] = useMemo(() => {
     if (!client) return [];
-    const rawCeremonies: ClientCeremonyItem[] =
-      client.ceremonies && client.ceremonies.length > 0
+    // A quotation made from a website enquiry may not carry the decorations the client
+    // picked yet (e.g. created before they were saved); read them from the enquiry.
+    const hasDecor = client.ceremonies?.some((c) => (c.items?.length ?? 0) > 0 || c.setupName) ?? false;
+    const fromEnquiry = hasDecor
+      ? null
+      : (() => {
+          const enq = loadStoredEnquiries(true).find((e) => e.id === client.id);
+          return enq ? ceremoniesFromEnquiry(enq) : null;
+        })();
+    const rawCeremonies: ClientCeremonyItem[] = fromEnquiry
+      ? fromEnquiry
+      : client.ceremonies && client.ceremonies.length > 0
         ? client.ceremonies
         : [
             {
@@ -1398,6 +1367,81 @@ export function DecorationProposalView({
           transform: rotate(180deg);
         }
 
+        .dp-minilist {
+          display: flex;
+          gap: 12px;
+          margin-top: 14px;
+          overflow-x: auto;
+          scroll-snap-type: x mandatory;
+          padding-bottom: 6px;
+          scrollbar-width: none;
+        }
+
+        .dp-minilist::-webkit-scrollbar {
+          display: none;
+        }
+
+        .dp-miniitem {
+          flex: 0 0 80%;
+          max-width: 270px;
+          scroll-snap-align: start;
+          display: flex;
+          flex-direction: column;
+          padding: 0;
+          overflow: hidden;
+          text-align: left;
+          background: var(--pink-50);
+          border: 1px solid var(--pink-200);
+          border-radius: 14px;
+          cursor: pointer;
+        }
+
+        .dp-miniitem.on {
+          border-color: var(--pink-400);
+          box-shadow: 0 4px 14px rgba(217, 138, 155, 0.35);
+        }
+
+        .dp-minicard-photo {
+          display: block;
+          width: 100%;
+          aspect-ratio: 4 / 3;
+          background: var(--pink-100) center / cover no-repeat;
+        }
+
+        .dp-minithumb {
+          flex: 0 0 52px;
+          width: 52px;
+          height: 52px;
+          border-radius: 10px;
+          background: var(--pink-100) center / cover no-repeat;
+          border: 1px solid var(--pink-200);
+        }
+
+        .dp-minitext {
+          flex: 1;
+          min-width: 0;
+          display: grid;
+          gap: 2px;
+        }
+
+        .dp-miniitem .dp-minitext {
+          padding: 10px 12px 12px;
+        }
+
+        .dp-minitext b {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--ink);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .dp-minitext small {
+          font-size: 12.5px;
+          color: var(--ink-2);
+        }
+
         .dp-countpill {
           display: inline-flex;
           gap: 8px;
@@ -1950,16 +1994,16 @@ export function DecorationProposalView({
         }
 
         .dp-gtile {
-          flex: 0 0 62%;
+          flex: 0 0 140px;
           scroll-snap-align: start;
-          aspect-ratio: 3/4;
+          aspect-ratio: 1/1;
           border-radius: 14px;
           position: relative;
           border: 1px solid var(--pink-300);
           overflow: hidden;
           display: grid;
           place-items: end start;
-          padding: 14px;
+          padding: 10px;
         }
 
         /* Dark gradient overlay at bottom of tile so caption is readable */
@@ -1973,7 +2017,8 @@ export function DecorationProposalView({
 
         .dp-gtile span {
           font-family: 'Cormorant Garamond', serif;
-          font-size: 17px;
+          font-size: 14px;
+          line-height: 1.15;
           color: #ffffff;
           position: relative;
           z-index: 1;
@@ -1981,7 +2026,7 @@ export function DecorationProposalView({
         }
 
         .dp-gtile::after {
-          content: "reference";
+          content: none;
           position: absolute;
           top: 10px;
           right: 12px;
@@ -2486,7 +2531,7 @@ export function DecorationProposalView({
           {referenceTiles.length > 0 && (
             <>
               <div className="dp-divider on-dark" style={{ marginTop: 34 }}>
-                REFERENCE LOOK
+                YOUR SELECTED DÉCOR
               </div>
               <div className="dp-gwrap">
                 {referenceTiles.map((t, idx) => (

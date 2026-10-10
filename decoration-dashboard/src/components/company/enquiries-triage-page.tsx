@@ -2,6 +2,7 @@ import { useState, useMemo, ComponentType } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  Building2,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -65,6 +66,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
+  ceremoniesFromEnquiry,
   useEnquiriesStore,
   type EnquiryItem,
   type EnquirySource,
@@ -299,7 +301,7 @@ export function EnquiriesTriagePage() {
     switch (stageId) {
       case "new_enquiries":
         return enquiries
-          .filter((e) => e.status === "unreviewed")
+          .filter((e) => e.status === "unreviewed" || (e.status as any) === "new" || !e.status)
           .map((e) => ({ type: "enquiry", data: e }));
 
       case "quotation_pending":
@@ -307,7 +309,8 @@ export function EnquiriesTriagePage() {
           .filter(
             (e) =>
               (e.status === "interested" && e.prompt_state === "later") ||
-              (e.status === "unreviewed" && e.prompt_state === "asking_quotation")
+              ((e.status === "unreviewed" || (e.status as any) === "new" || !e.status) &&
+                e.prompt_state === "asking_quotation")
           )
           .map((e) => ({ type: "enquiry", data: e }));
 
@@ -690,25 +693,18 @@ export function EnquiriesTriagePage() {
                       : enquiry.private_note || "";
 
                   const formattedAmount = (enquiry.estimated_budget_npr || 595000).toLocaleString();
-                  const nepaliDateDisplay = enquiry.date_bs.includes("BS") ? enquiry.date_bs : `${enquiry.date_bs} BS`;
-                  const packageTierDisplay =
-                    enquiry.package_tier ||
-                    ((enquiry.estimated_budget_npr || 0) >= 400000
-                      ? "PLATINUM PACKAGE"
-                      : (enquiry.estimated_budget_npr || 0) >= 150000
-                      ? "GOLD PACKAGE"
-                      : "SILVER PACKAGE");
-                  const timeSlotDisplay =
-                    enquiry.time_slot ||
-                    (enquiry.ceremony_type.toLowerCase().includes("wedding")
-                      ? "4 AM - 5 AM"
-                      : "11:00 AM – 4:00 PM");
-                  const guestCountDisplay =
-                    enquiry.guest_count ||
-                    (enquiry.ceremony_type.toLowerCase().includes("wedding") ? 200 : 100);
-                  const cleanPhone = enquiry.phone.replace(/[^0-9+]/g, "");
-                  const cleanWa = (enquiry.whatsapp_number || enquiry.phone).replace(/[^0-9]/g, "");
-                  const clientInitial = enquiry.client_name.trim().charAt(0).toUpperCase() || "C";
+                  const nepaliDateDisplay = enquiry.date_bs
+                    ? enquiry.date_bs.toLowerCase().includes("pending") || enquiry.date_bs.includes("BS")
+                      ? enquiry.date_bs
+                      : `${enquiry.date_bs} BS`
+                    : "Date pending";
+                  // Only show what the enquiry actually has (website enquiries have none of these)
+                  const packageTierDisplay = enquiry.package_tier;
+                  const timeSlotDisplay = enquiry.time_slot;
+                  const guestCountDisplay = enquiry.guest_count;
+                  const cleanPhone = (enquiry.phone || "").replace(/[^0-9+]/g, "");
+                  const cleanWa = (enquiry.whatsapp_number || enquiry.phone || "").replace(/[^0-9]/g, "");
+                  const clientInitial = (enquiry.client_name || "").trim().charAt(0).toUpperCase() || "C";
 
                   const timestampDisplay = (() => {
                     if (
@@ -766,7 +762,7 @@ export function EnquiriesTriagePage() {
                                     </h3>
 
                                     {/* Status Pill */}
-                                    {enquiry.status === "unreviewed" && (
+                                    {(enquiry.status === "unreviewed" || (enquiry.status as any) === "new" || !enquiry.status) && (
                                       <span className="rounded-full bg-[#E8546F] text-white text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider shadow-2xs">
                                         NEW
                                       </span>
@@ -821,12 +817,12 @@ export function EnquiriesTriagePage() {
                                   {/* Line 3: Source Channel & Inquiry Timestamp */}
                                   <div className="flex items-center gap-3 text-xs text-stone-400 flex-wrap pt-0.5">
                                     <span className="inline-flex items-center gap-1.5 text-stone-600 font-medium">
-                                      {enquiry.source === "Website" && <Globe className="size-3 text-stone-400" />}
+                                      {(enquiry.source === "Website" || (enquiry.source as any) === "client_panel") && <Globe className="size-3 text-stone-400" />}
                                       {enquiry.source === "Instagram" && <Instagram className="size-3 text-stone-400" />}
                                       {enquiry.source === "Facebook" && <MessageCircle className="size-3 text-stone-400" />}
                                       {enquiry.source === "Referral" && <UserCheck className="size-3 text-stone-400" />}
                                       {enquiry.source === "Walk-in" && <Compass className="size-3 text-stone-400" />}
-                                      <span>{enquiry.source} Inquiry</span>
+                                      <span>{(enquiry.source as string) === "client_panel" ? "Website" : enquiry.source} Inquiry</span>
                                     </span>
                                     <span className="inline-flex items-center gap-1 text-stone-400">
                                       <Clock className="size-3 text-stone-400" />
@@ -879,22 +875,32 @@ export function EnquiriesTriagePage() {
                                   <span className="text-stone-600 font-medium">
                                     {enquiry.venue}
                                   </span>
-                                  <span className="text-stone-300">•</span>
-                                  <span className="inline-block rounded border border-stone-300 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-stone-700 shadow-2xs">
-                                    {packageTierDisplay}
-                                  </span>
-                                  <span className="text-stone-300">•</span>
-                                  <span className="inline-flex items-center gap-1 text-stone-500">
-                                    <Users className="size-3 text-stone-400" />
-                                    <span>{guestCountDisplay} Guests</span>
-                                  </span>
+                                  {packageTierDisplay && (
+                                    <>
+                                      <span className="text-stone-300">•</span>
+                                      <span className="inline-block rounded border border-stone-300 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-stone-700 shadow-2xs">
+                                        {packageTierDisplay}
+                                      </span>
+                                    </>
+                                  )}
+                                  {guestCountDisplay ? (
+                                    <>
+                                      <span className="text-stone-300">•</span>
+                                      <span className="inline-flex items-center gap-1 text-stone-500">
+                                        <Users className="size-3 text-stone-400" />
+                                        <span>{guestCountDisplay} Guests</span>
+                                      </span>
+                                    </>
+                                  ) : null}
                                 </div>
 
                                 {/* Row 3: Time Slot */}
-                                <div className="flex items-center gap-1.5 text-xs text-stone-500 pt-0.5">
-                                  <Clock className="size-3 text-stone-400 shrink-0" />
-                                  <span>{timeSlotDisplay}</span>
-                                </div>
+                                {timeSlotDisplay && (
+                                  <div className="flex items-center gap-1.5 text-xs text-stone-500 pt-0.5">
+                                    <Clock className="size-3 text-stone-400 shrink-0" />
+                                    <span>{timeSlotDisplay}</span>
+                                  </div>
+                                )}
                               </div>
 
                               <EnquiryExtraDetails enquiry={enquiry} />
@@ -1623,8 +1629,10 @@ function SidebarContent({
         <button
           type="button"
           onClick={() => {
-            resetEnquiries();
-            toast.success("Sample enquiries refreshed");
+            if (window.confirm("Reset sample leads? Real client enquiries will remain untouched.")) {
+              resetEnquiries();
+              toast.success("Sample leads refreshed. Real client enquiries preserved.");
+            }
           }}
           className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border border-stone-200 bg-white text-[11px] font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-50 transition-colors shadow-2xs cursor-pointer"
         >
@@ -1763,7 +1771,7 @@ function getRecordAsBookedClient(record: UnifiedRecord): BookedClient {
     events_count: 1,
     quotation_status: "Draft",
     proposal_id: `prop-${enq.id.replace("enq-", "")}`,
-    ceremonies: [
+    ceremonies: ceremoniesFromEnquiry(enq) ?? [
       {
         id: "c-1",
         name: enq.ceremony_type,

@@ -2,9 +2,38 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "decoration-dashboard/server/index.mjs"
+      ],
+      "port": 4000
+    },
+    {
       "name": "decoration-dashboard",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "decoration-dashboard", "run", "dev", "--", "--port", "5173", "--strictPort"],
+      "runtimeArgs": [
+        "--prefix",
+        "decoration-dashboard",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "client-site",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "../client panel/node_modules/vite/bin/vite.js",
+        "../client panel",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
       "port": 5173
     }
   ]

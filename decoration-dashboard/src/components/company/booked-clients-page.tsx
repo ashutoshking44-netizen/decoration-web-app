@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import {
   Search,
   Clock,
-  ChevronRight,
   MapPin,
   CheckCircle2,
   Phone,
@@ -13,15 +12,11 @@ import {
   ChevronDown,
   ArrowLeft,
   Calendar,
-  CalendarDays,
-  LayoutList,
   CalendarCheck,
   Users,
   RotateCcw,
-  Table as TableIcon,
   Share2,
   FileEdit,
-  UserCheck,
   Send,
 } from "lucide-react";
 import {
@@ -35,8 +30,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { BookedClientsCalendarView } from "./booked-clients-calendar-view";
 import { ProposalDispatchModal } from "./proposal-dispatch-modal";
+import { BookedCalendarStrip } from "./booked-calendar-strip";
+import { BookedClientCard, BookedStatTiles } from "./booked-client-card";
+import { EditClientDialog } from "./edit-client-dialog";
+import { resolveClientDate } from "@/lib/booked-dates";
 
 type FilterTab = "all" | "weekend" | "upcoming";
 type SortOption = "date" | "name" | "balance";
@@ -46,6 +44,7 @@ export function BookedClientsPage() {
     clients,
     updateClientStage,
     updateClientQuotationStatus,
+    updateClient,
     resetClients,
   } = useBookedClientsStore();
 
@@ -55,35 +54,13 @@ export function BookedClientsPage() {
   const [sortBy, setSortBy] = useState<SortOption>("date");
   const [selectedBooking, setSelectedBooking] = useState<BookedClient | null>(null);
   const [proposalModalClient, setProposalModalClient] = useState<BookedClient | null>(null);
-
-  // View Mode: "table" | "list" | "calendar"
-  const [viewMode, setViewMode] = useState<"table" | "list" | "calendar">(() => {
-    if (typeof window !== "undefined") {
-      const p = new URLSearchParams(window.location.search);
-      const v = p.get("view");
-      if (v === "calendar") return "calendar";
-      if (v === "list") return "list";
-      if (v === "table") return "table";
-    }
-    return "table";
-  });
-
-  const [initialDate, setInitialDate] = useState<string | undefined>(() => {
-    if (typeof window !== "undefined") {
-      const p = new URLSearchParams(window.location.search);
-      return p.get("date") || undefined;
-    }
-    return undefined;
-  });
-
+  const [editingClient, setEditingClient] = useState<BookedClient | null>(null);
+  /** Set by clicking a booked day in the calendar; limits the cards to that day. */
+  const [dateFilter, setDateFilter] = useState<{ iso: string; label: string } | null>(null);
   // Sync state from query parameters on load or popstate
   useEffect(() => {
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search);
-      const v = p.get("view");
-      if (v === "calendar" || v === "list" || v === "table") setViewMode(v);
-      const d = p.get("date");
-      if (d) setInitialDate(d);
       const clientId = p.get("client");
       if (clientId) {
         const found = clients.find((c) => c.id === clientId);
@@ -126,6 +103,9 @@ export function BookedClientsPage() {
           if (!isFuture) return false;
         }
 
+        // Day picked in the booking calendar
+        if (dateFilter && resolveClientDate(item)?.iso !== dateFilter.iso) return false;
+
         // Stage Dropdown Filter
         if (selectedStage !== "all" && item.stage !== selectedStage) return false;
 
@@ -155,7 +135,7 @@ export function BookedClientsPage() {
         };
         return getDayWeight(a.days_to_event) - getDayWeight(b.days_to_event);
       });
-  }, [clients, activeTab, selectedStage, searchQuery, sortBy]);
+  }, [clients, activeTab, selectedStage, searchQuery, sortBy, dateFilter]);
 
   // Days Badge Renderer
   const renderDaysBadge = (days: number | "today" | "complete") => {
@@ -282,64 +262,6 @@ export function BookedClientsPage() {
 
           {/* Quick Stat Pill & View Toggle */}
           <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
-            {/* View Mode Toggle: Table / List / Calendar */}
-            <div className="flex items-center rounded-full bg-[#F0EBE7] p-1 border border-[#E7DCD6] shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("table");
-                  const url = new URL(window.location.href);
-                  url.searchParams.set("view", "table");
-                  window.history.replaceState({}, "", url.toString());
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer",
-                  viewMode === "table"
-                    ? "bg-white text-[#2B2320] shadow-xs"
-                    : "text-[#8A7B76] hover:text-[#2B2320]"
-                )}
-              >
-                <TableIcon className="size-3.5 text-[#E8546F]" />
-                <span>Table</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("list");
-                  const url = new URL(window.location.href);
-                  url.searchParams.set("view", "list");
-                  window.history.replaceState({}, "", url.toString());
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer",
-                  viewMode === "list"
-                    ? "bg-white text-[#2B2320] shadow-xs"
-                    : "text-[#8A7B76] hover:text-[#2B2320]"
-                )}
-              >
-                <LayoutList className="size-3.5" />
-                <span>Cards</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("calendar");
-                  const url = new URL(window.location.href);
-                  url.searchParams.set("view", "calendar");
-                  window.history.replaceState({}, "", url.toString());
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer",
-                  viewMode === "calendar"
-                    ? "bg-[#E8546F] text-white shadow-xs"
-                    : "text-[#8A7B76] hover:text-[#2B2320]"
-                )}
-              >
-                <CalendarDays className="size-3.5" />
-                <span>Calendar</span>
-              </button>
-            </div>
-
             <div className="inline-flex items-center gap-2 rounded-full border border-[#E7DCD6] bg-white px-3.5 py-1.5 shadow-2xs">
               <span className="size-2 rounded-full bg-[#E8546F] animate-pulse" />
               <span className="text-xs font-bold text-[#4A3F3C]">
@@ -348,6 +270,30 @@ export function BookedClientsPage() {
             </div>
           </div>
         </div>
+
+        {/* Summary + booking calendar (hover a booked day to see who it is) */}
+        <div className="space-y-4">
+          <BookedStatTiles clients={clients.filter((c) => c.stage !== "closed")} />
+          <BookedCalendarStrip
+            clients={clients.filter((c) => c.stage !== "closed")}
+            onPickDate={(iso, label) => setDateFilter((cur) => (cur?.iso === iso ? null : { iso, label }))}
+            selectedIso={dateFilter?.iso ?? null}
+          />
+        </div>
+
+        {dateFilter && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setDateFilter(null)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#F3D5DB] bg-[#FDEDEF] px-3.5 py-1.5 text-xs font-semibold text-[#C33A56] transition hover:bg-[#FBD9DF]"
+              aria-label={`Clear date filter ${dateFilter.label}`}
+            >
+              Filter: {dateFilter.label}
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Status Filter Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-[#E7DCD6]">
@@ -446,13 +392,7 @@ export function BookedClientsPage() {
         </div>
 
         {/* Booked Client Table View, Cards View, OR Calendar View */}
-        {viewMode === "calendar" ? (
-          <BookedClientsCalendarView
-            clients={filteredClients}
-            initialDateStr={initialDate}
-            onSelectBooking={(client) => setSelectedBooking(client)}
-          />
-        ) : filteredClients.length === 0 ? (
+        {filteredClients.length === 0 ? (
           <div className="rounded-[18px] border border-[#E7DCD6] bg-white p-12 text-center shadow-2xs">
             <CalendarCheck className="size-10 text-[#B7A9A3] mx-auto mb-2" />
             <h3 className="font-display text-lg font-bold text-[#2B2320]">No bookings found</h3>
@@ -461,7 +401,7 @@ export function BookedClientsPage() {
                 ? "No client records match the selected filter criteria. Try clearing search filters."
                 : "No clients in this view."}
             </p>
-            {(searchQuery || selectedStage !== "all" || activeTab !== "all") && (
+            {(searchQuery || selectedStage !== "all" || activeTab !== "all" || dateFilter) && (
               <Button
                 variant="outline"
                 size="sm"
@@ -469,6 +409,7 @@ export function BookedClientsPage() {
                   setSearchQuery("");
                   setSelectedStage("all");
                   setActiveTab("all");
+                  setDateFilter(null);
                 }}
                 className="mt-4 rounded-full text-xs font-semibold"
               >
@@ -476,277 +417,51 @@ export function BookedClientsPage() {
               </Button>
             )}
           </div>
-        ) : viewMode === "table" ? (
-          /* ── Client Overview Table ── */
-          <div className="rounded-[22px] border border-[#E7DCD6] bg-white overflow-hidden shadow-2xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#FAF8F7] border-b border-[#E7DCD6] text-[10.5px] font-extrabold uppercase tracking-wider text-[#8A7B76]">
-                    <th className="py-3.5 px-4 font-bold">Client &amp; Journey</th>
-                    <th className="py-3.5 px-4 font-bold">Contact Number</th>
-                    <th className="py-3.5 px-4 font-bold">Assigned Handler</th>
-                    <th className="py-3.5 px-4 font-bold text-center">Active Events</th>
-                    <th className="py-3.5 px-4 font-bold">Quotation Status</th>
-                    <th className="py-3.5 px-4 font-bold text-right">Investment (NPR)</th>
-                    <th className="py-3.5 px-4 font-bold text-right">Quick Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F0EBE7] text-xs">
-                  {filteredClients.map((client) => {
-                    const initials = client.client_name
-                      .split(/\s+/)
-                      .map((w) => w[0])
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase();
-
-                    const eventsCount = client.events_count || client.ceremonies?.length || 1;
-                    const ceremonyNames = (client.ceremonies || [])
-                      .map((c) => c.name)
-                      .join(", ");
-
-                    return (
-                      <tr
-                        key={client.id}
-                        onClick={() => setSelectedBooking(client)}
-                        className="hover:bg-[#FAF8F7]/80 transition-colors cursor-pointer group"
-                      >
-                        {/* 1. Client & Function */}
-                        <td className="py-3.5 px-4 min-w-[220px]">
-                          <div className="flex items-center gap-3">
-                            <div className="size-10 shrink-0 rounded-full bg-[#FDEDEF] text-[#C33A56] border border-[#F9CFD7] font-display font-bold text-xs flex items-center justify-center shadow-2xs">
-                              {initials}
-                            </div>
-                            <div className="min-w-0">
-                              <strong className="font-display font-bold text-sm text-[#2B2320] block truncate group-hover:text-[#C33A56] transition-colors">
-                                {client.client_name}
-                              </strong>
-                              <span className="text-[11px] text-[#8A7B76] block truncate">
-                                {client.event_type}
-                              </span>
-                              <div className="flex items-center gap-1 text-[11px] text-[#8A7B76] mt-0.5 truncate">
-                                <MapPin className="size-3 text-[#B7A9A3] shrink-0" />
-                                <span className="truncate">{client.venue}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* 2. Contact Number */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          {client.phone ? (
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs font-semibold text-[#4A3F3C]">
-                                {client.phone}
-                              </span>
-                              <div
-                                className="flex items-center gap-1"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <a
-                                  href={`tel:${client.phone}`}
-                                  className="size-6 rounded-full bg-stone-100 hover:bg-[#FDEDEF] hover:text-[#C33A56] flex items-center justify-center text-[#8A7B76] transition-colors"
-                                  title="Call client"
-                                >
-                                  <Phone className="size-3" />
-                                </a>
-                                <a
-                                  href={`https://wa.me/${client.phone.replace(/[^0-9]/g, "")}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="size-6 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition-colors"
-                                  title="WhatsApp client"
-                                >
-                                  <MessageCircle className="size-3" />
-                                </a>
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-stone-400 italic">No phone</span>
-                          )}
-                        </td>
-
-                        {/* 3. Assigned Staff Handler */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#FAF8F7] border border-[#E7DCD6] text-xs font-semibold text-[#4A3F3C]">
-                            <UserCheck className="size-3 text-[#8A7B76]" />
-                            <span className="capitalize">{client.handler || "suvash mukhiya"}</span>
-                          </div>
-                        </td>
-
-                        {/* 4. Active Events Count */}
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          <span
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-[#FDEDEF] text-[#C33A56] border border-[#F9CFD7] shadow-2xs"
-                            title={ceremonyNames || `${eventsCount} scheduled functions`}
-                          >
-                            <Sparkles className="size-3 text-[#E8546F]" />
-                            {eventsCount} {eventsCount === 1 ? "Event" : "Events"}
-                          </span>
-                          {ceremonyNames && (
-                            <div
-                              className="text-[10px] text-[#8A7B76] truncate max-w-[140px] mx-auto mt-0.5"
-                              title={ceremonyNames}
-                            >
-                              {ceremonyNames}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* 5. Quotation Status */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          {renderQuotationStatusBadge(client.quotation_status)}
-                        </td>
-
-                        {/* 6. Investment (NPR) */}
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          <div className="font-display font-black text-sm text-[#2B2320] tabular-nums">
-                            Rs. {client.total_amount.toLocaleString()}
-                          </div>
-                          <div className="text-[10px] text-[#8A7B76] capitalize mt-0.5">
-                            {client.payment_status.replace("_", " ")} · {renderDaysBadge(client.days_to_event)}
-                          </div>
-                        </td>
-
-                        {/* 7. Quick Actions: [View Proposal Link] & [Edit Quotation] */}
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          <div
-                            className="flex items-center justify-end gap-1.5"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {/* [View Proposal Link] */}
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setProposalModalClient(client)}
-                              className="h-8 px-2.5 rounded-xl border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-[0.98]"
-                              title="View unique tracking URL and WhatsApp dispatch preview"
-                            >
-                              <Share2 className="size-3 text-emerald-600" />
-                              <span>View Proposal Link</span>
-                            </Button>
-
-                            {/* [Edit Quotation] */}
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              asChild
-                              className="h-8 px-2.5 rounded-xl border-[#E7DCD6] text-[#4A3F3C] hover:bg-[#FAF8F7] hover:border-[#E8546F]/50 text-xs font-bold gap-1.5 shadow-2xs"
-                              title="Edit quotation and customize ceremony cards"
-                            >
-                              <Link
-                                to="/quotations/new"
-                                search={{ clientId: client.id, from: "/booked-clients" }}
-                              >
-                                <FileEdit className="size-3 text-[#E8546F]" />
-                                <span>Edit Quotation</span>
-                              </Link>
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
         ) : (
-          /* ── Cards / List View ── */
-          <div className="space-y-2.5">
-            {filteredClients.map((client) => {
-              const initials = client.client_name
-                .split(/\s+/)
-                .map((w) => w[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase();
-
-              const eventsCount = client.events_count || client.ceremonies?.length || 1;
-
-              return (
-                <div
-                  key={client.id}
-                  onClick={() => setSelectedBooking(client)}
-                  className="group relative flex items-center justify-between rounded-[18px] border border-[#E7DCD6] bg-white p-4 transition-all hover:border-[#E8546F]/50 hover:shadow-md cursor-pointer gap-4"
-                >
-                  {/* Left Side: Avatar + Stacked 2-Line Container with explicit 4px gap */}
-                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                    {/* Initials Avatar */}
-                    <div className="size-11 shrink-0 rounded-full bg-[#FDEDEF] text-[#C33A56] border border-[#F9CFD7] font-display font-bold text-sm flex items-center justify-center shadow-2xs">
-                      {initials}
-                    </div>
-
-                    {/* Stacked Two-Line Info: flex-col with explicit ~4px gap, no overlapping */}
-                    <div className="flex flex-col gap-1 min-w-0 flex-1">
-                      {/* Line 1: Client Name + Event Type */}
-                      <div className="flex items-center gap-2 min-w-0">
-                        <strong className="font-display text-sm sm:text-base font-bold text-[#2B2320] truncate group-hover:text-[#C33A56] transition-colors">
-                          {client.client_name}
-                        </strong>
-                        <span className="text-xs text-[#8A7B76] truncate shrink-0">
-                          · {client.event_type}
-                        </span>
-                        <span className="text-[10px] font-bold text-[#C33A56] bg-rose-50 px-2 py-0.2 rounded-full border border-rose-200 shrink-0">
-                          {eventsCount} {eventsCount === 1 ? "Event" : "Events"}
-                        </span>
-                      </div>
-
-                      {/* Line 2: Venue only */}
-                      <div className="flex items-center gap-1.5 text-xs text-[#8A7B76] min-w-0">
-                        <MapPin className="size-3 text-[#B7A9A3] shrink-0" />
-                        <span className="truncate">{client.venue}</span>
-                        <span className="mx-1">·</span>
-                        <span className="capitalize">{client.handler || "suvash mukhiya"}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right Side: Status Badge + Days + Quick Actions */}
-                  <div className="flex items-center gap-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {renderQuotationStatusBadge(client.quotation_status)}
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setProposalModalClient(client)}
-                      className="h-8 px-2.5 rounded-xl border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold gap-1 shadow-2xs cursor-pointer"
-                      title="View Proposal Link"
-                    >
-                      <Share2 className="size-3 text-emerald-600" />
-                      <span className="hidden sm:inline">Proposal</span>
-                    </Button>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      asChild
-                      className="h-8 px-2.5 rounded-xl border-[#E7DCD6] text-[#4A3F3C] text-xs font-bold gap-1 shadow-2xs"
-                      title="Edit Quotation"
-                    >
-                      <Link to="/quotations/new" search={{ clientId: client.id, from: "/booked-clients" }}>
-                        <FileEdit className="size-3 text-[#E8546F]" />
-                        <span className="hidden sm:inline">Edit</span>
+          /* ── Cards view ── */
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredClients.map((client) => (
+              <BookedClientCard
+                key={client.id}
+                client={client}
+                onOpen={() => setSelectedBooking(client)}
+                onEdit={() => setEditingClient(client)}
+                extra={
+                  <div className="flex items-center justify-between gap-2 border-t border-[#F5EAE6] pt-2.5 text-xs font-semibold">
+                    <div className="flex items-center gap-2">{renderQuotationStatusBadge(client.quotation_status)}</div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setProposalModalClient(client)}
+                        className="inline-flex items-center gap-1 text-emerald-700 hover:underline"
+                      >
+                        <Share2 className="size-3" /> Proposal
+                      </button>
+                      <Link
+                        to="/quotations/new"
+                        search={{ clientId: client.id, from: "/booked-clients" }}
+                        className="inline-flex items-center gap-1 text-[#4A3F3C] hover:underline"
+                      >
+                        <FileEdit className="size-3 text-[#E8546F]" /> Quotation
                       </Link>
-                    </Button>
-
-                    {/* Days-to-event badge */}
-                    {renderDaysBadge(client.days_to_event)}
-
-                    {/* Chevron */}
-                    <ChevronRight className="size-4 text-[#8A7B76] group-hover:text-[#E8546F] group-hover:translate-x-0.5 transition-all shrink-0" />
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                }
+              />
+            ))}
           </div>
         )}
       </main>
+
+      {/* Easy edit form */}
+      <EditClientDialog
+        client={editingClient}
+        onClose={() => setEditingClient(null)}
+        onSave={(id, patch) => {
+          updateClient(id, patch);
+          setSelectedBooking((cur) => (cur && cur.id === id ? { ...cur, ...patch } : cur));
+        }}
+      />
 
       {/* WhatsApp Proposal Dispatch Modal */}
       <ProposalDispatchModal

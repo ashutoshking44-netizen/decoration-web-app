@@ -38,7 +38,9 @@ import {
   type DecorationSetupItem,
   recordSetupQuotation,
   useDecorationSetupsStore,
+  loadStoredSetups,
 } from "@/lib/decoration-setups";
+import { isMyCompanyId, CURRENT_COMPANY_ID, getCurrentCompanyName } from "@/lib/current-company";
 import {
   EVENT_LOCATION_OPTIONS,
   loadQuotationIntake,
@@ -140,6 +142,97 @@ export interface DynamicWizardStep {
   eventIndex?: number;
   eventId?: string;
   eventName?: string;
+  isSkipped?: boolean | undefined;
+}
+
+export function findDecorationInCatalog(
+  decId: string | number | undefined,
+  catalog: DecorationSetupItem[]
+): DecorationSetupItem | null {
+  if (!decId) return null;
+  const targetId = String(decId).trim().toLowerCase();
+  return (
+    catalog.find((s) => {
+      if (String(s.id).trim().toLowerCase() === targetId) return true;
+      if (s.sku && String(s.sku).trim().toLowerCase() === targetId) return true;
+      if (Array.isArray(s.aliases)) {
+        return s.aliases.some((a) => String(a).trim().toLowerCase() === targetId);
+      }
+      return false;
+    }) ?? null
+  );
+}
+
+export function isDecorationMine(
+  d: any,
+  catalog: DecorationSetupItem[]
+): boolean {
+  if (!d) return false;
+  const compId = d.companyId || d.ownerCompanyId;
+  if (isMyCompanyId(compId)) return true;
+  const decId = d.decorationId || d.id;
+  const found = findDecorationInCatalog(decId, catalog);
+  if (found && isMyCompanyId(found.companyId)) return true;
+  return false;
+}
+
+export function resolvePickedDecoration(
+  d: any,
+  catalog: DecorationSetupItem[],
+  eventIdx = 0,
+  pickIdx = 0
+): DecorationSetupItem {
+  const decId = d.decorationId || d.id;
+  const found = findDecorationInCatalog(decId, catalog);
+  if (found) {
+    const price = Number(d.listedPrice ?? d.price);
+    return price > 0 ? { ...found, total_price: price } : found;
+  }
+  const name = String(d.name || d.title || "Decoration").trim();
+  const cat = (d.category as DecorationCategory) || "Stage";
+  const price = Number(d.listedPrice ?? d.price) || 0;
+  const photo = String(d.photo || d.image || d.imageUrl || "").trim() || undefined;
+  const compId = d.companyId || d.ownerCompanyId || (isMyCompanyId(d.companyId) ? CURRENT_COMPANY_ID : undefined);
+  const size = d.size || d.dimensions;
+  return {
+    id: String(decId || `picked-${eventIdx}-${pickIdx}`),
+    sku: `PICK-${eventIdx + 1}-${pickIdx + 1}`,
+    name,
+    category: cat,
+    description: d.description || "Chosen by client in enquiry",
+    imageUrl: photo,
+    gallery: Array.isArray(d.gallery) && d.gallery.length > 0 ? d.gallery : (photo ? [photo] : []),
+    total_price: price,
+    companyId: compId,
+    companyName: d.companyName || d.ownerCompanyName,
+    size,
+    dimensions: size,
+    specifications: d.specifications,
+    backdropSpecs: d.backdropSpecs,
+    stageSpecs: d.stageSpecs,
+    mandapSpecs: d.mandapSpecs,
+    entranceGateSpecs: d.entranceGateSpecs,
+    welcomeBoardSpecs: d.welcomeBoardSpecs,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function getCardsForEvent(
+  cardsMap: Record<string, DecorationSetupItem[]>,
+  evId: string,
+  evIndex?: number
+): DecorationSetupItem[] {
+  const direct = cardsMap[evId];
+  if (direct && direct.length > 0) return direct;
+  if (evIndex !== undefined) {
+    const k1 = cardsMap[`event-${evIndex}`];
+    if (k1 && k1.length > 0) return k1;
+    const k2 = cardsMap[`c-${evIndex + 1}`];
+    if (k2 && k2.length > 0) return k2;
+    const k3 = cardsMap[`idx-${evIndex}`];
+    if (k3 && k3.length > 0) return k3;
+  }
+  return getCeremonyCardsList(cardsMap, evId);
 }
 
 const QUICK_CATEGORY_OPTIONS: DecorationCategory[] = [
@@ -176,6 +269,8 @@ function formatSetupTitle(setup?: DecorationSetupItem | null): string {
 
 function getSetupDimensions(setup?: DecorationSetupItem | null): string {
   if (!setup) return "14 × 14 ft";
+  if (setup.size) return setup.size;
+  if (setup.dimensions) return setup.dimensions;
   const specs = setup.specifications as any;
   if (specs?.stage_dimensions) {
     return `${specs.stage_dimensions.width} × ${specs.stage_dimensions.depth} ft`;
@@ -901,35 +996,98 @@ export function QuotationStudioPage({
   // names the client already gave are filled in (Steps 2 & 3), and their
   // requirements / note / reference photos show up while choosing decorations.
   const enquiryApplied = useRef(false);
+  // Direct orders already have their decorations chosen, so the studio opens on
+  // Pricing & Add-ons (set once the steps for the enquiry's events exist).
+  const [jumpToPricing, setJumpToPricing] = useState(false);
+  const enquiryEventCount = useRef(0);
   const [enquiryRefs, setEnquiryRefs] = useState<Record<string, ClientReference>>({});
   const [enquiryPhotos, setEnquiryPhotos] = useState<Record<string, string[]>>({});
+  const [forceStep4EventIds, setForceStep4EventIds] = useState<Set<string>>(new Set());
+  const [enquiryEventPicks, setEnquiryEventPicks] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     if (!clientId || enquiryApplied.current) return;
+    const allCatalog = catalogSetups.length > 0 ? catalogSetups : loadStoredSetups();
     const enq = loadStoredEnquiries(true).find((e) => e.id === clientId);
-    if (!enq || !enq.events || enq.events.length === 0) return;
-    // A quotation that already has decorations assigned is restored by the
-    // existing logic below; don't overwrite it from the enquiry.
-    const existing = bookedClients.find((c) => c.id === clientId) || findClientById(clientId);
-    if (existing?.ceremonies?.some((c) => c.setupName)) return;
+    const existingClient = bookedClients.find((c) => c.id === clientId) || findClientById(clientId);
+
+    // Collect events from either enquiry or existing client record
+    const sourceEvents: Array<{
+      name: string;
+      date_ad?: string | undefined;
+      date_bs?: string | undefined;
+      date_iso?: string | undefined;
+      venue?: string | undefined;
+      note?: string | undefined;
+      requirements?: string[] | undefined;
+      category_details?: any;
+      picks: any[];
+    }> = [];
+
+    if (enq?.events && enq.events.length > 0) {
+      enq.events.forEach((ev) => {
+        sourceEvents.push({
+          name: ev.name,
+          date_ad: ev.date_ad,
+          date_bs: ev.date_bs,
+          date_iso: ev.date_iso,
+          venue: ev.venue,
+          note: ev.note,
+          requirements: ev.requirements,
+          category_details: ev.category_details,
+          picks: ev.requested_decorations ?? (ev as any).decorations ?? [],
+        });
+      });
+    } else if (existingClient?.ceremonies && existingClient.ceremonies.length > 0) {
+      existingClient.ceremonies.forEach((c) => {
+        const cPicks = (c as any).items && (c as any).items.length > 0
+          ? (c as any).items
+          : (c.setupName
+              ? [{
+                  id: c.setupId,
+                  decorationId: c.setupId,
+                  name: c.setupName,
+                  price: c.setupPrice,
+                  image: c.setupImage,
+                  category: c.category,
+                }]
+              : []);
+        sourceEvents.push({
+          name: c.name,
+          date_ad: "",
+          date_bs: c.date,
+          venue: c.venue,
+          picks: cPicks,
+        });
+      });
+    }
+
+    if (sourceEvents.length === 0) return;
 
     const entries: EventDateEntry[] = [];
     const schedule: EventScheduleItem[] = [];
     const refs: Record<string, ClientReference> = {};
+    const cardsMap: Record<string, DecorationSetupItem[]> = {};
+    const rawPicksMap: Record<string, any[]> = {};
     let pending = 0;
-    enq.events.forEach((ev, i) => {
+    let firstFoundSetup: DecorationSetupItem | null = null;
+    const eventsDiagnostics: any[] = [];
+
+    sourceEvents.forEach((ev, i) => {
       let iso = ev.date_iso || "";
-      if (!iso) {
+      if (!iso && ev.date_ad) {
         const d = new Date(ev.date_ad);
         if (!Number.isNaN(d.getTime())) {
           iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         }
       }
       if (!iso) {
-        pending += 1; // month-only date: the studio needs an exact day
-        return;
+        pending += 1;
+        const fallbackDate = new Date(Date.now() + (14 + i * 2) * 24 * 60 * 60 * 1000);
+        iso = fallbackDate.toISOString().split("T")[0] || "";
       }
-      const id = `enq-${enq.id}-${i}`;
+
+      const id = `enq-${clientId}-${i}`;
       entries.push({ id, dateAd: iso });
       const bs = convertAdToBs(iso);
       schedule.push({
@@ -937,19 +1095,64 @@ export function QuotationStudioPage({
         name: ev.name,
         isCustom: true,
         dateAd: iso,
-        dateBs: bs ? bs.formatted : "",
+        dateBs: ev.date_bs || (bs ? bs.formatted : ""),
         venueClassification: "Banquet & Ballroom",
         venueLocation: ev.venue && ev.venue !== "Venue to be decided" ? ev.venue : "",
         sameAsPreviousVenue: false,
         ...(ev.note ? { notes: ev.note } : {}),
       });
+
+      // Preselect picked decorations for this event into Step 4 state
+      const rawPicks = ev.picks ?? [];
+      const resolvedCards: DecorationSetupItem[] = [];
+
+      rawPicks.forEach((d: any, pickIdx: number) => {
+        const resolved = resolvePickedDecoration(d, allCatalog, i, pickIdx);
+        resolvedCards.push(resolved);
+        if (!firstFoundSetup) {
+          firstFoundSetup = resolved;
+        }
+      });
+
+      if (resolvedCards.length > 0) {
+        cardsMap[id] = resolvedCards;
+        cardsMap[`event-${i}`] = resolvedCards;
+        cardsMap[`c-${i + 1}`] = resolvedCards;
+      }
+      rawPicksMap[id] = rawPicks;
+      rawPicksMap[`event-${i}`] = rawPicks;
+      rawPicksMap[`c-${i + 1}`] = rawPicks;
+
       refs[id] = {
         requirements: ev.requirements ?? [],
         note: ev.note ?? "",
         photos: [],
         categoryDetails: ev.category_details,
       };
+
+      const allMine = rawPicks.length > 0 && rawPicks.every((p) => isDecorationMine(p, allCatalog));
+      eventsDiagnostics.push({
+        eventIndex: i,
+        eventId: id,
+        eventName: ev.name,
+        dateAd: iso,
+        dateBs: ev.date_bs || (bs ? bs.formatted : ""),
+        rawPicksCount: rawPicks.length,
+        rawPicks: rawPicks.map((p) => ({
+          id: p.id,
+          decorationId: p.decorationId,
+          companyId: p.companyId,
+          ownerCompanyId: p.ownerCompanyId,
+          name: p.name || p.title,
+          isMine: isDecorationMine(p, allCatalog),
+        })),
+        resolvedCardsCount: resolvedCards.length,
+        resolvedCardNames: resolvedCards.map((c) => c.name),
+        allMine,
+        willSkipStep4: allMine,
+      });
     });
+
     if (entries.length === 0) return;
 
     enquiryApplied.current = true;
@@ -960,14 +1163,56 @@ export function QuotationStudioPage({
     setEventDates(entries.map((e) => e.dateAd).sort());
     setPendingDates([]);
     setDateFromEnquiry(true);
-    if (enq.email) setClientEmail(enq.email);
+    if (enq?.email) setClientEmail(enq.email);
     setEnquiryRefs(refs);
+
+    if (Object.keys(cardsMap).length > 0) {
+      setMultiCeremonyCards((prev) => ({ ...prev, ...cardsMap }));
+    }
+    setEnquiryEventPicks(rawPicksMap);
+
+    if (firstFoundSetup) {
+      setSetup(firstFoundSetup);
+    }
+
+    const sumTotal = Object.values(cardsMap)
+      .flat()
+      .reduce((s, c) => s + (c ? Number(c.total_price || 0) : 0), 0);
+    if (sumTotal > 0) {
+      setBasePrice(sumTotal);
+    }
+
+    // ── Diagnostic Logging as required by Requirement 1 ──
+    console.group(`[Quotation Studio Enquiry Diagnostics] Client: ${enq?.client_name || existingClient?.client_name || clientId}`);
+    console.log("1. Enquiry & Company Details:", {
+      clientId,
+      enquiryId: enq?.id,
+      clientName: enq?.client_name || existingClient?.client_name,
+      orderType: enq?.order_type || "quotation-request",
+      CURRENT_COMPANY_ID,
+      currentCompanyName: getCurrentCompanyName(),
+      catalogItemsCount: allCatalog.length,
+    });
+    console.log("2. Event Picked Items Analysis (decorationId, companyId, isMine):", eventsDiagnostics);
+    console.log("3. Step 4 Preselected Cards State (multiCeremonyCards):", {
+      cardsMapKeys: Object.keys(cardsMap),
+      cardsMap,
+      firstSetup: (firstFoundSetup as any) ? { id: (firstFoundSetup as any).id, name: (firstFoundSetup as any).name, price: (firstFoundSetup as any).total_price } : null,
+    });
+    console.log("4. Skip Step 4 Evaluation:", eventsDiagnostics.map((ed) => ({
+      event: ed.eventName,
+      rawPicksCount: ed.rawPicksCount,
+      allMine: ed.allMine,
+      skipStep4: ed.willSkipStep4,
+    })));
+    console.groupEnd();
+
     if (pending > 0) {
       toast.info(
-        `${pending} event${pending > 1 ? "s have" : " has"} no exact date yet — add ${pending > 1 ? "them" : "it"} in the Dates step.`
+        `${pending} event${pending > 1 ? "s have" : " has"} no exact date yet — review dates in Step 2.`
       );
     }
-  }, [clientId, bookedClients]);
+  }, [clientId, bookedClients, catalogSetups]);
 
   // Reference photos live in IndexedDB (one entry per event).
   useEffect(() => {
@@ -1187,6 +1432,8 @@ export function QuotationStudioPage({
       name: string;
       category: string;
       description: string;
+      size?: string | undefined;
+      dimensions?: string | undefined;
       quantity: number;
       unit: string;
       defaultRate: number;
@@ -1194,8 +1441,8 @@ export function QuotationStudioPage({
       imageUrl?: string | undefined;
     }> = [];
 
-    eventSchedule.forEach((ev) => {
-      const cards = getCeremonyCardsList(multiCeremonyCards, ev.id);
+    eventSchedule.forEach((ev, idx) => {
+      const cards = getCardsForEvent(multiCeremonyCards, ev.id, idx);
       cards.forEach((card) => {
         const key = `${ev.id}-${card.id}`;
         const defaultRate = Number(
@@ -1204,23 +1451,26 @@ export function QuotationStudioPage({
             card.mandapSpecs?.price ||
             card.backdropSpecs?.price ||
             card.entranceGateSpecs?.price ||
+            card.welcomeBoardSpecs?.price ||
             45000
         );
         const override = catalogItemOverrides[key];
         const rate = override?.unitPrice !== undefined ? override.unitPrice : defaultRate;
         const quantity = override?.quantity !== undefined ? override.quantity : 1;
 
-        const dimensions =
+        const size =
+          card.size ||
+          card.dimensions ||
           card.stageSpecs?.dimensions ||
           card.backdropSpecs?.dimensions ||
           (card.specifications?.dimensions
-            ? `${card.specifications.dimensions.width_ft}ft W × ${card.specifications.dimensions.height_ft}ft H`
+            ? `${card.specifications.dimensions.width_ft} × ${card.specifications.dimensions.height_ft} ft`
             : "");
         const flower =
           card.specifications?.flowers?.[0]?.name?.replace(/\s*\([^)]*\)/g, "").trim();
 
         const scopeParts = [
-          dimensions,
+          size,
           flower ? `${flower} Floral Theme` : "",
           card.description,
         ].filter(Boolean);
@@ -1235,6 +1485,8 @@ export function QuotationStudioPage({
           name: card.name,
           category: card.category || "Stage",
           description: scopeParts.join(" · "),
+          size,
+          dimensions: size,
           quantity,
           unit: "Setup",
           defaultRate,
@@ -1309,8 +1561,29 @@ export function QuotationStudioPage({
     return Math.max(0, subtotalBeforeDiscount - (Number(discountAmount) || 0));
   }, [subtotalBeforeDiscount, discountAmount]);
 
+  const openStep4ForEvent = (ceremonyId: string) => {
+    setForceStep4EventIds((prev) => new Set([...prev, ceremonyId]));
+    const targetStep = dynamicSteps.find(
+      (s) => s.type === "event_setup" && (s.eventId === ceremonyId || s.key === `event_${ceremonyId}`)
+    );
+    if (targetStep) {
+      setWizardStep(targetStep.stepNumber);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      const evIdx = eventSchedule.findIndex((ev) => ev.id === ceremonyId);
+      if (evIdx >= 0) {
+        const stepByIndex = dynamicSteps.find((s) => s.type === "event_setup" && s.eventIndex === evIdx);
+        if (stepByIndex) {
+          setWizardStep(stepByIndex.stepNumber);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
+    }
+  };
+
   // ── Dynamic Multi-Step Generation scaling with selected events ──
   const dynamicSteps: DynamicWizardStep[] = useMemo(() => {
+    const allCatalog = catalogSetups.length > 0 ? catalogSetups : loadStoredSetups();
     const steps: DynamicWizardStep[] = [
       {
         stepNumber: 1,
@@ -1354,6 +1627,15 @@ export function QuotationStudioPage({
     eventsList.forEach((ev, idx) => {
       const stepNum = steps.length + 1;
       const evName = ev.name?.trim() || `Event ${idx + 1}`;
+
+      const rawPicks =
+        enquiryEventPicks[ev.id] ??
+        enquiryEventPicks[`event-${idx}`] ??
+        enquiryEventPicks[`c-${idx + 1}`] ??
+        [];
+      const isAllMine = rawPicks.length > 0 && rawPicks.every((d) => isDecorationMine(d, allCatalog));
+      const isSkipped = isAllMine && !forceStep4EventIds.has(ev.id);
+
       steps.push({
         stepNumber: stepNum,
         key: `event_${ev.id || idx}`,
@@ -1363,6 +1645,7 @@ export function QuotationStudioPage({
         eventName: evName,
         title: `Configure Event ${idx + 1}: ${evName}`,
         caption: `Configure decoration and specific requirements for ${ev.dateBs || ev.dateAd || "this event"}.`,
+        isSkipped,
       });
     });
 
@@ -1385,7 +1668,7 @@ export function QuotationStudioPage({
     });
 
     return steps;
-  }, [eventSchedule]);
+  }, [eventSchedule, enquiryEventPicks, forceStep4EventIds, catalogSetups]);
 
   const currentStep: DynamicWizardStep = useMemo(() => {
     return (
@@ -1407,6 +1690,13 @@ export function QuotationStudioPage({
     }
   }, [dynamicSteps.length, wizardStep]);
 
+  // Auto-advance if landed on a skipped step
+  useEffect(() => {
+    if (currentStep.type === "event_setup" && currentStep.isSkipped) {
+      goNext();
+    }
+  }, [currentStep.stepNumber, currentStep.isSkipped]);
+
   const goToStep = (stepNum: number) => {
     if (stepNum < 1 || stepNum > dynamicSteps.length) return;
     setWizardStep(stepNum);
@@ -1414,15 +1704,41 @@ export function QuotationStudioPage({
   };
 
   const goNext = () => {
-    if (wizardStep < dynamicSteps.length) {
-      setWizardStep((prev) => Math.min(prev + 1, dynamicSteps.length));
+    let nextStepNum = wizardStep + 1;
+    while (nextStepNum <= dynamicSteps.length) {
+      const target = dynamicSteps.find((s) => s.stepNumber === nextStepNum);
+      if (target && !target.isSkipped) {
+        break;
+      }
+      nextStepNum += 1;
+    }
+    if (nextStepNum <= dynamicSteps.length) {
+      setWizardStep(nextStepNum);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
   const goBack = () => {
-    if (wizardStep > 1) {
-      setWizardStep((prev) => Math.max(prev - 1, 1));
+    // If on Step 4 because opened via "Change decoration", return straight to Pricing
+    if (currentStep.type === "event_setup" && forceStep4EventIds.has(currentStep.eventId || "")) {
+      const pricingStep = dynamicSteps.find((s) => s.type === "pricing");
+      if (pricingStep) {
+        setWizardStep(pricingStep.stepNumber);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+    }
+
+    let prevStepNum = wizardStep - 1;
+    while (prevStepNum >= 1) {
+      const target = dynamicSteps.find((s) => s.stepNumber === prevStepNum);
+      if (target && !target.isSkipped) {
+        break;
+      }
+      prevStepNum -= 1;
+    }
+    if (prevStepNum >= 1) {
+      setWizardStep(prevStepNum);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
@@ -2301,6 +2617,12 @@ Valid for 14 days.`;
   const setupTitle = formatSetupTitle(setup);
   const setupDimensions = getSetupDimensions(setup);
 
+  const visibleSteps = useMemo(() => dynamicSteps.filter((s) => !s.isSkipped), [dynamicSteps]);
+  const currentVisibleIndex = useMemo(() => {
+    const idx = visibleSteps.findIndex((s) => s.stepNumber === currentStep.stepNumber);
+    return idx >= 0 ? idx : 0;
+  }, [visibleSteps, currentStep.stepNumber]);
+
   return (
     <div className="min-h-screen bg-white text-slate-900 flex flex-col justify-between">
       {/* ─── TOP SECTION: HEADER + STEP CONTENT ─── */}
@@ -2309,7 +2631,7 @@ Valid for 14 days.`;
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-[11px] font-bold tracking-wider text-[#e15b74] uppercase">
-              STEP {String(currentStep.stepNumber).padStart(2, "0")} OF {String(dynamicSteps.length).padStart(2, "0")}
+              STEP {String(currentVisibleIndex + 1).padStart(2, "0")} OF {String(visibleSteps.length).padStart(2, "0")}
               {currentStep.type === "event_setup" && (
                 <>
                   <span className="mx-2 text-stone-300">·</span>
@@ -2358,19 +2680,19 @@ Valid for 14 days.`;
           </div>
         </div>
 
-        {/* ─── STEP PROGRESS BAR (scales dynamically based on event count) ─── */}
+        {/* ─── STEP PROGRESS BAR (scales dynamically based on visible steps) ─── */}
         <div
           className="grid gap-2 sm:gap-2.5 w-full mt-4"
-          style={{ gridTemplateColumns: `repeat(${dynamicSteps.length}, minmax(0, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(${visibleSteps.length}, minmax(0, 1fr))` }}
         >
-          {dynamicSteps.map((s) => {
-            const isPassed = s.stepNumber <= wizardStep;
+          {visibleSteps.map((s, idx) => {
+            const isPassed = idx <= currentVisibleIndex;
             return (
               <button
                 key={s.key}
                 type="button"
                 onClick={() => goToStep(s.stepNumber)}
-                title={`Step ${s.stepNumber}: ${s.title}`}
+                title={`Step ${idx + 1}: ${s.title}`}
                 className="h-[5px] rounded-full transition-all cursor-pointer relative"
                 style={{
                   backgroundColor: isPassed ? "#f97316" : "#e5e2dc",
@@ -2685,6 +3007,24 @@ Valid for 14 days.`;
                 onBack={goBack}
                 onContinue={() => {
                   const schedule = entriesToSchedule(dateEntries, venueLocation, eventSchedule);
+                  setMultiCeremonyCards((prev) => {
+                    const next = { ...prev };
+                    schedule.forEach((ev, idx) => {
+                      const oldId = eventSchedule[idx]?.id;
+                      const cards =
+                        (oldId && prev[oldId]?.length ? prev[oldId] : null) ??
+                        (prev[ev.id]?.length ? prev[ev.id] : null) ??
+                        (prev[`event-${idx}`]?.length ? prev[`event-${idx}`] : null) ??
+                        (prev[`c-${idx + 1}`]?.length ? prev[`c-${idx + 1}`] : null) ??
+                        [];
+                      if (cards.length > 0) {
+                        next[ev.id] = cards;
+                        next[`event-${idx}`] = cards;
+                        next[`c-${idx + 1}`] = cards;
+                      }
+                    });
+                    return next;
+                  });
                   setEventSchedule(schedule);
                   saveStoredEventSchedule(schedule);
                   setEventDates(
@@ -2705,6 +3045,22 @@ Valid for 14 days.`;
                 onScheduleChange={(updated) => {
                   setEventSchedule(updated);
                   saveStoredEventSchedule(updated);
+                  setMultiCeremonyCards((prev) => {
+                    const next = { ...prev };
+                    updated.forEach((ev, idx) => {
+                      const oldId = eventSchedule[idx]?.id;
+                      const cards =
+                        (oldId && prev[oldId]?.length ? prev[oldId] : null) ??
+                        (prev[ev.id]?.length ? prev[ev.id] : null) ??
+                        (prev[`event-${idx}`]?.length ? prev[`event-${idx}`] : null) ??
+                        [];
+                      if (cards.length > 0) {
+                        next[ev.id] = cards;
+                        next[`event-${idx}`] = cards;
+                      }
+                    });
+                    return next;
+                  });
                 }}
                 onBack={goBack}
                 onContinue={() => {
@@ -2831,6 +3187,14 @@ Valid for 14 days.`;
                   if (sum > 0) {
                     setBasePrice(sum);
                   }
+                  if (forceStep4EventIds.has(currentStep.eventId || "")) {
+                    const pricing = dynamicSteps.find((s) => s.type === "pricing");
+                    if (pricing) {
+                      setWizardStep(pricing.stepNumber);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                      return;
+                    }
+                  }
                   goNext();
                 }}
                 onBack={goBack}
@@ -2889,12 +3253,14 @@ Valid for 14 days.`;
                             }}
                           >
                             {selectedCatalogItems.length > 0
-                              ? `${selectedCatalogItems.length} Setup Designs Selected`
+                              ? selectedCatalogItems.length === 1
+                                ? selectedCatalogItems[0]?.category
+                                : `${selectedCatalogItems.length} Setup Designs Selected`
                               : setup?.category || quickCategory || "Decoration"}
                           </span>
                           <span className="text-[11px] font-mono text-slate-400">
                             {selectedCatalogItems.length > 0
-                              ? `${eventSchedule.length} Events`
+                              ? `${eventSchedule.length} ${eventSchedule.length === 1 ? "Event" : "Events"}`
                               : setup?.sku || "CUSTOM"}
                           </span>
                         </div>
@@ -2909,7 +3275,9 @@ Valid for 14 days.`;
                           <span className="inline-flex items-center gap-1">
                             <Layers className="size-3 text-slate-400" />
                             {selectedCatalogItems.length > 0
-                              ? `${selectedCatalogItems.map((c) => c.name).slice(0, 2).join(", ")}${selectedCatalogItems.length > 2 ? ` +${selectedCatalogItems.length - 2} more` : ""}`
+                              ? selectedCatalogItems.length === 1
+                                ? selectedCatalogItems[0]?.size || selectedCatalogItems[0]?.dimensions || "Standard Dimensions"
+                                : `${selectedCatalogItems.map((c) => c.name).slice(0, 2).join(", ")}${selectedCatalogItems.length > 2 ? ` +${selectedCatalogItems.length - 2} more` : ""}`
                               : setupDimensions}
                           </span>
                         </div>
@@ -3097,7 +3465,7 @@ Valid for 14 days.`;
                                     <img
                                       src={item.imageUrl}
                                       alt={item.name}
-                                      className="size-11 rounded-lg object-cover border border-black/5 shrink-0 mt-0.5"
+                                      className="size-12 rounded-lg object-cover border border-black/5 shrink-0 mt-0.5 shadow-xs"
                                     />
                                   )}
                                   <div className="min-w-0 flex-1">
@@ -3109,19 +3477,45 @@ Valid for 14 days.`;
                                         {item.ceremonyName}
                                         {item.ceremonyDate ? ` · ${item.ceremonyDate}` : ""}
                                       </span>
+                                      {item.size && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                          {item.size}
+                                        </span>
+                                      )}
                                     </div>
-                                    {item.description && (
-                                      <p className="text-[11px] text-slate-500 line-clamp-1">
-                                        {item.description}
-                                      </p>
-                                    )}
+                                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                      {item.description ? (
+                                        <p className="text-[11px] text-slate-500 line-clamp-1 flex-1 min-w-[140px]">
+                                          {item.description}
+                                        </p>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        onClick={() => openStep4ForEvent(item.ceremonyId)}
+                                        className="text-[11px] font-semibold text-[#e14b68] hover:text-[#c43852] hover:underline inline-flex items-center gap-1 cursor-pointer shrink-0"
+                                      >
+                                        Change decoration
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                               </td>
                               <td className="py-3 px-3.5 text-center">
-                                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold capitalize bg-stone-100 text-slate-700">
-                                  {item.category}
-                                </span>
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold capitalize bg-stone-100 text-slate-700">
+                                    {item.category}
+                                  </span>
+                                  <span
+                                    className="inline-block px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider border"
+                                    style={{
+                                      backgroundColor: TOKENS.gold.bg,
+                                      color: TOKENS.gold.text,
+                                      borderColor: "rgba(230, 153, 25, 0.3)",
+                                    }}
+                                  >
+                                    Base Setup
+                                  </span>
+                                </div>
                               </td>
                               <td className="py-3 px-3.5 text-center">
                                 <Input

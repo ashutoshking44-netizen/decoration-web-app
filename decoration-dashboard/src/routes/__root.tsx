@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { startServerSync } from "../lib/server-sync";
 
 function NotFoundComponent() {
   return (
@@ -131,6 +132,9 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // Publish decorations to / pull enquiries from the shared API.
+  useEffect(() => startServerSync(), []);
 
   return (
     <QueryClientProvider client={queryClient}>

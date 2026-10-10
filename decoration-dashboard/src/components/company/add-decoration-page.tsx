@@ -63,6 +63,7 @@ import {
   type PlatformColourInputProps,
   getFlowerColourStyle,
 } from "./flower-colour-input";
+import { getCurrentCompanyId, getCompanyNameById } from "@/lib/current-company";
 
 const FLOW_STEPS = [
   { number: 1, title: "Upload Photo" },
@@ -82,6 +83,8 @@ interface FlowerItemRow {
   name: string;
   color?: string;
   type: "Natural" | "Artificial" | "Mixed";
+  /** Only for "Mixed": percentage that is natural (rest is artificial). */
+  naturalPercent?: number;
 }
 
 export type LightingUnit = "piece" | "box" | "set" | "meter";
@@ -829,6 +832,9 @@ export function AddDecorationPage({
             : f.type === "mixed"
               ? "Mixed"
               : "Natural",
+        ...(f.type === "mixed" && f.natural_percent !== undefined
+          ? { naturalPercent: f.natural_percent }
+          : {}),
       }));
     }
     return [{ id: "flw-1", name: "Rose", color: "Pink", type: "Natural" }];
@@ -1293,6 +1299,11 @@ export function AddDecorationPage({
     );
   };
 
+  const handleSetNaturalPercent = (id: string, percent: number) => {
+    const p = Math.min(100, Math.max(0, Math.round(percent)));
+    setFlowerRows((prev) => prev.map((f) => (f.id === id ? { ...f, naturalPercent: p } : f)));
+  };
+
   const handleAddLightRow = () => {
     const newId = `light-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     setLightRows((prev) => [
@@ -1574,6 +1585,9 @@ export function AddDecorationPage({
       description.trim() ||
       `${finalMainStructure}${finalSetupStyles.length > 0 ? ` (${finalSetupStyles.join(", ")})` : ""}. Dimensions: ${widthFt} × ${heightFt} ft. Floral: ${floralTag === "with_flowers" ? "With Flowers" : "Structure Only"}. Platform: ${platformUsed ? `${finalPlatformShape} Platform (${finalPlatformColour})${pHeightNum ? `, ${pHeightNum}ft` : ""}` : "No"}. Lighting: ${lightsUsed ? (lightRows.length > 0 ? lightRows.map((l) => `${l.type || "Light"} (${l.quantity || 1} ${l.unit || "piece"})`).join(", ") : "Yes") : "No"}.`;
 
+    const activeCompId = initialSetup?.companyId || getCurrentCompanyId();
+    const activeCompName = initialSetup?.companyName || getCompanyNameById(activeCompId);
+
     const setupPayload = {
       name: finalName,
       sku: initialSetup?.sku || randomSku,
@@ -1583,6 +1597,8 @@ export function AddDecorationPage({
       description: finalDescription,
       applicable_events: selectedEventTypes,
       total_price: finalTotalPrice,
+      companyId: activeCompId,
+      companyName: activeCompName,
       floralTag: floralTag,
       specifications: {
         // Backwards compatible structure_type
@@ -1610,6 +1626,7 @@ export function AddDecorationPage({
                 : f.type === "Mixed"
                   ? "mixed"
                   : "natural") as "artificial" | "mixed" | "natural",
+              ...(f.type === "Mixed" ? { natural_percent: f.naturalPercent ?? 50 } : {}),
             }))
           : [],
         platforms_used: platformUsed === true,
@@ -2849,6 +2866,56 @@ export function AddDecorationPage({
                                   />
                                 </div>
                               </div>
+
+                              {row.type === "Mixed" && (
+                                <div className="mt-4 space-y-3 rounded-xl border border-purple-200/70 bg-white p-3.5 sm:p-4">
+                                  <p className="text-xs font-semibold text-slate-700">
+                                    How much of this is natural and how much is artificial?
+                                  </p>
+                                  <div className="flex h-2.5 overflow-hidden rounded-full bg-amber-200">
+                                    <div
+                                      className="bg-emerald-500 transition-all"
+                                      style={{ width: `${row.naturalPercent ?? 50}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs font-bold">
+                                    <span className="text-emerald-700">Natural {row.naturalPercent ?? 50}%</span>
+                                    <span className="text-amber-700">Artificial {100 - (row.naturalPercent ?? 50)}%</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    value={row.naturalPercent ?? 50}
+                                    onChange={(e) => handleSetNaturalPercent(row.id, Number(e.target.value))}
+                                    aria-label="Percentage of natural flowers"
+                                    className="h-6 w-full cursor-pointer accent-[#E8546F]"
+                                  />
+                                  <div className="flex flex-wrap gap-2">
+                                    {[
+                                      [25, "25 / 75"],
+                                      [50, "50 / 50"],
+                                      [75, "75 / 25"],
+                                    ].map(([n, label]) => (
+                                      <button
+                                        key={n}
+                                        type="button"
+                                        onClick={() => handleSetNaturalPercent(row.id, Number(n))}
+                                        className={cn(
+                                          "rounded-full border px-3 py-1 text-[11px] font-semibold transition",
+                                          (row.naturalPercent ?? 50) === n
+                                            ? "border-[#E8546F] bg-[#FFF5F7] text-[#E8546F]"
+                                            : "border-slate-200 text-slate-600 hover:border-slate-300",
+                                        )}
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
+                                    <span className="self-center text-[11px] text-slate-400">natural / artificial</span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
 

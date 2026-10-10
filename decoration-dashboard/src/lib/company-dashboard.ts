@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { loadStoredEnquiries } from "./enquiries";
+import { loadStoredBookedClients } from "./clients";
+import { loadProfile } from "./company-profile";
 
 export type Permission =
   | "date-check"
@@ -66,17 +69,17 @@ export type DashboardData = {
 const days: CalendarDay[] = [
   { bs: 30, ad: 16, currentMonth: false }, { bs: 31, ad: 17, currentMonth: false },
   { bs: 1, ad: 18, currentMonth: true }, { bs: 2, ad: 19, currentMonth: true },
-  { bs: 3, ad: 20, currentMonth: true, event: "Site Visit" }, { bs: 4, ad: 21, currentMonth: true },
+  { bs: 3, ad: 20, currentMonth: true }, { bs: 4, ad: 21, currentMonth: true },
   { bs: 5, ad: 22, currentMonth: true }, { bs: 6, ad: 23, currentMonth: true },
-  { bs: 7, ad: 24, currentMonth: true }, { bs: 8, ad: 25, currentMonth: true, event: "Function" },
+  { bs: 7, ad: 24, currentMonth: true }, { bs: 8, ad: 25, currentMonth: true },
   { bs: 9, ad: 26, currentMonth: true }, { bs: 10, ad: 27, currentMonth: true },
   { bs: 11, ad: 28, currentMonth: true }, { bs: 12, ad: 29, currentMonth: true },
-  { bs: 13, ad: 30, currentMonth: true }, { bs: 14, ad: 31, currentMonth: true, event: "Site Visit" },
+  { bs: 13, ad: 30, currentMonth: true }, { bs: 14, ad: 31, currentMonth: true },
   { bs: 15, ad: 1, currentMonth: true }, { bs: 16, ad: 2, currentMonth: true },
-  { bs: 17, ad: 3, currentMonth: true, current: true, event: "Function" }, { bs: 18, ad: 4, currentMonth: true },
+  { bs: 17, ad: 3, currentMonth: true, current: true }, { bs: 18, ad: 4, currentMonth: true },
   { bs: 19, ad: 5, currentMonth: true }, { bs: 20, ad: 6, currentMonth: true },
   { bs: 21, ad: 7, currentMonth: true }, { bs: 22, ad: 8, currentMonth: true },
-  { bs: 23, ad: 9, currentMonth: true, event: "Function" }, { bs: 24, ad: 10, currentMonth: true },
+  { bs: 23, ad: 9, currentMonth: true }, { bs: 24, ad: 10, currentMonth: true },
   { bs: 25, ad: 11, currentMonth: true }, { bs: 26, ad: 12, currentMonth: true },
   { bs: 27, ad: 13, currentMonth: true }, { bs: 28, ad: 14, currentMonth: true },
   { bs: 29, ad: 15, currentMonth: true }, { bs: 30, ad: 16, currentMonth: true },
@@ -84,55 +87,116 @@ const days: CalendarDay[] = [
   { bs: 2, ad: 19, currentMonth: false },
 ];
 
-export const dashboardFixture: DashboardData = {
-  company: { name: "Gulab Decor", caption: "Business Suite", initials: "GD", profileComplete: false },
-  permissions: ["date-check", "quotations", "payments", "enquiries", "notifications", "quick-action"],
-  enquiries: { today: 8, yesterday: 5, month: 47 },
-  bookings: { count: 16, averageMinutes: 42 },
-  inventory: { reserved: 128, conflicts: 3 },
-  calendar: days,
-  team: {
-    month: "Mangsir 2083",
-    required: 21,
-    assigned: 14,
-    roles: [
-      { name: "Designer", short: "DSG", assigned: 2, required: 3 },
-      { name: "Florist", short: "FLR", assigned: 1, required: 2 },
-      { name: "Lighting", short: "LGT", assigned: 2, required: 2 },
-      { name: "Fabric", short: "FAB", assigned: 2, required: 3 },
-      { name: "Rigging", short: "RIG", assigned: 1, required: 2 },
-      { name: "Setup", short: "SET", assigned: 3, required: 4 },
-      { name: "Teardown", short: "TDN", assigned: 2, required: 3 },
-      { name: "Vendor", short: "VND", assigned: 1, required: 2 },
-    ],
-    dates: [
-      { day: 17, open: 2, functions: [{ title: "Aarav & Riya — Wedding", roles: ["Florist", "Setup"] }] },
-      { day: 23, open: 3, functions: [{ title: "Shrestha Reception", roles: ["Designer", "Fabric", "Teardown"] }] },
-      { day: 28, open: 2, functions: [{ title: "Karki Mehendi", roles: ["Rigging", "Vendor"] }] },
-    ],
-  },
-  clients: [
-    { id: "aarav-riya", initials: "AR", name: "Aarav & Riya", status: "Booked", functions: 3, matched: "Client name", details: "Kathmandu · Maya Shrestha · 98•• ••••12" },
-    { id: "anisha-karki", initials: "AK", name: "Anisha Karki", status: "Enquiry", functions: 1, matched: "Location", details: "Bhaktapur · Pratik Rana · 98•• ••••41" },
-    { id: "shrestha-family", initials: "SF", name: "Shrestha Family", status: "Booked", functions: 2, matched: "Handler", details: "Lalitpur · Maya Shrestha · 98•• ••••63" },
-  ],
-  upcoming: [
-    { id: "aarav-riya-wedding", days: 0, date: "Sep 16", client: "Aarav & Riya", type: "Wedding Reception", location: "The Soaltee, Kathmandu", phone: "+9779800000012", assignments: ["Designer · Nisha", "Lighting · Ramesh", "Setup · 2 open"] },
-    { id: "karki-mehendi", days: 3, date: "Sep 19", client: "Anisha Karki", type: "Mehendi", location: "Heritage Garden, Bhaktapur", phone: "+9779800000041", assignments: ["Florist · Suman", "Fabric · 1 open"] },
-    { id: "shrestha-reception", days: 7, date: "Sep 23", client: "Shrestha Family", type: "Reception", location: "Hotel Himalaya, Lalitpur", phone: "+9779800000063", assignments: ["Designer · Nisha", "Rigging · 1 open", "Teardown · 1 open"] },
-    { id: "rai-corporate", days: 12, date: "Sep 28", client: "Rai Group", type: "Corporate Dinner", location: "Hyatt Regency, Kathmandu", phone: "+9779800000088", assignments: ["Lighting · Ramesh", "Vendor · 1 open"] },
-    { id: "thapa-engagement", days: 16, date: "Oct 02", client: "Thapa Family", type: "Engagement", location: "Vivanta, Lalitpur", phone: "+9779800000094", assignments: ["Designer · Nisha", "Fabric · Sita"] },
-    { id: "lama-anniversary", days: 20, date: "Oct 06", client: "Lama Family", type: "Anniversary", location: "Gokarna Forest Resort", phone: "+9779800000099", assignments: ["Florist · Suman", "Setup · 1 open"] },
-  ],
-  isOwner: true,
-  additionalSections: [],
-};
+export function buildLiveDashboardData(): DashboardData {
+  const profile = loadProfile();
+  const enquiries = loadStoredEnquiries();
+  const clients = loadStoredBookedClients();
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const monthStr = now.toISOString().slice(0, 7);
+
+  const todayCount = enquiries.filter((e) => e.created_at?.startsWith(todayStr)).length;
+  const yesterdayCount = enquiries.filter((e) => e.created_at?.startsWith(yesterdayStr)).length;
+  const monthCount = enquiries.filter((e) => e.created_at?.startsWith(monthStr)).length;
+
+  const clientResults: ClientResult[] = [
+    ...clients.map((c) => ({
+      id: c.id,
+      initials: (c.client_name || "CL").slice(0, 2).toUpperCase(),
+      name: c.client_name,
+      status: "Booked" as const,
+      functions: c.ceremonies?.length || c.events_count || 1,
+      matched: "Client name",
+      details: `${c.venue || "Venue"} · ${c.handler || "Staff"} · ${c.phone || ""}`.trim(),
+    })),
+    ...enquiries.map((e) => ({
+      id: e.id,
+      initials: (e.client_name || "EN").slice(0, 2).toUpperCase(),
+      name: e.client_name,
+      status: "Enquiry" as const,
+      functions: e.events?.length || 1,
+      matched: "Client name",
+      details: `${e.venue || e.location || "Venue"} · ${e.assigned_handler || "Pending"} · ${e.phone || ""}`.trim(),
+    })),
+  ];
+
+  const upcomingFunctions: UpcomingFunction[] = clients.map((c) => ({
+    id: c.id,
+    days: typeof c.days_to_event === "number" ? c.days_to_event : 0,
+    date: c.event_date || "Date scheduled",
+    client: c.client_name,
+    type: c.event_type || "Event",
+    location: c.venue || "Venue",
+    phone: c.phone || "",
+    assignments: c.crew_assignments?.map((cr) => `${cr.role} · ${cr.name}`) || [],
+  }));
+
+  const name = profile?.name || "Decoration Studio";
+  const initials = (name || "DS").slice(0, 2).toUpperCase();
+
+  return {
+    company: {
+      name,
+      caption: "Business Suite",
+      initials,
+      profileComplete: Boolean(profile?.phone && profile?.email && profile?.city),
+    },
+    permissions: ["date-check", "quotations", "payments", "enquiries", "notifications", "quick-action"],
+    enquiries: {
+      today: todayCount,
+      yesterday: yesterdayCount,
+      month: monthCount,
+    },
+    bookings: {
+      count: clients.length,
+      averageMinutes: 30,
+    },
+    inventory: {
+      reserved: 0,
+      conflicts: 0,
+    },
+    calendar: days,
+    team: {
+      month: "Current Season",
+      required: 0,
+      assigned: 0,
+      roles: [],
+      dates: [],
+    },
+    clients: clientResults,
+    upcoming: upcomingFunctions,
+    isOwner: true,
+    additionalSections: [],
+  };
+}
+
+export const dashboardFixture: DashboardData = buildLiveDashboardData();
 
 export function useCompanyDashboard() {
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<DashboardData>(buildLiveDashboardData);
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
-    const timer = window.setTimeout(() => setLoading(false), 650);
-    return () => window.clearTimeout(timer);
+    const refresh = () => {
+      setData(buildLiveDashboardData());
+    };
+    refresh();
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", refresh);
+      window.addEventListener("enquiries-synced", refresh);
+      window.addEventListener("decoration-setups-updated", refresh);
+
+      return () => {
+        window.removeEventListener("storage", refresh);
+        window.removeEventListener("enquiries-synced", refresh);
+        window.removeEventListener("decoration-setups-updated", refresh);
+      };
+    }
+    return undefined;
   }, []);
-  return { data: dashboardFixture, loading };
+
+  return { data, loading };
 }

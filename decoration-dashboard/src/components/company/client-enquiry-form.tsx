@@ -29,6 +29,7 @@ import {
   type EnquiryEvent,
   type EnquiryItem,
 } from "@/lib/enquiries";
+import { upsertEnquiryInSupabase } from "@/lib/supabase-service";
 import { convertAdToBs } from "@/lib/event-schedule";
 import { saveEnquiryPhotos } from "@/lib/enquiry-photos";
 import {
@@ -299,6 +300,8 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
   };
 
   const [categoryPhotoBusy, setCategoryPhotoBusy] = useState<string | null>(null);
+  /** "Do you have a reference photo?" answer per event item, keyed `${eventKey}-${needId}`. */
+  const [refChoice, setRefChoice] = useState<Record<string, "yes" | "no">>({});
 
   const updateCategoryNote = (eventKey: string, categoryId: string, note: string) => {
     setEvents((list) =>
@@ -655,6 +658,7 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
     try {
       const all = loadStoredEnquiries(true);
       saveStoredEnquiries([enquiry, ...all]);
+      void upsertEnquiryInSupabase(enquiry);
     } catch {
       /* storage unavailable — WhatsApp hand-off below still works */
     }
@@ -787,7 +791,7 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
       <form
         onSubmit={handleSubmit}
         noValidate
-        className="space-y-8 rounded-[28px] border border-[#F3D5DB] bg-white p-6 shadow-[0_12px_40px_rgba(232,84,111,.08)] sm:p-10 lg:p-12"
+        className="space-y-6 rounded-3xl border border-[#F3D5DB] bg-white p-4 shadow-[0_12px_40px_rgba(232,84,111,.08)] sm:space-y-8 sm:rounded-[28px] sm:p-10 lg:p-12"
       >
         <Stepper step={step} />
 
@@ -1102,6 +1106,8 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
                           const needMeta = DECOR_NEEDS.find((d) => d.id === needId);
                           const detail = ev.categoryDetails?.[needId] ?? { note: "" };
                           const isBusy = categoryPhotoBusy === `${ev.key}-${needId}`;
+                          const choice: "yes" | "no" | undefined =
+                            refChoice[`${ev.key}-${needId}`] ?? (detail.photo || detail.link ? "yes" : undefined);
 
                           return (
                             <div
@@ -1116,7 +1122,7 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
                                   </span>
                                   <div>
                                     <h5 className="text-sm font-bold text-[#2B2320]">
-                                      {needId} References
+                                      {needId}
                                     </h5>
                                     {needMeta && (
                                       <span className="text-[11px] text-[#8A7B76]">
@@ -1136,16 +1142,57 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
                                   title={`Remove ${needId}`}
                                 >
                                   <X className="size-3" />
-                                  <span>Remove item</span>
+                                  <span>Remove</span>
                                 </button>
                               </div>
 
                               <div className="space-y-3.5">
-                                {/* Option to Upload a reference photo */}
+                                {/* Simple yes / no question — the upload only appears after "Yes" */}
+                                <div className="space-y-2">
+                                  <p className="text-sm font-semibold text-[#2B2320]">
+                                    Do you have a reference?
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Reference photo">
+                                    {(
+                                      [
+                                        ["yes", "Yes"],
+                                        ["no", "No"],
+                                      ] as const
+                                    ).map(([value, label]) => (
+                                      <button
+                                        key={value}
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={choice === value}
+                                        onClick={() => {
+                                          setRefChoice((prev) => ({ ...prev, [`${ev.key}-${needId}`]: value }));
+                                          // Answering "No" drops any photo already attached
+                                          if (value === "no" && detail.photo) removeCategoryPhoto(ev.key, needId);
+                                        }}
+                                        className={cn(
+                                          "flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition active:scale-[0.98]",
+                                          choice === value
+                                            ? "border-[#E8546F] bg-[#FFF0F3] text-[#D6415C]"
+                                            : "border-[#E7DCD6] bg-white text-[#5B4C47] hover:border-[#F0B5C0]",
+                                        )}
+                                      >
+                                        <span
+                                          className={cn(
+                                            "flex size-4 items-center justify-center rounded-full border",
+                                            choice === value ? "border-[#E8546F]" : "border-[#CBBDB6]",
+                                          )}
+                                        >
+                                          {choice === value && <span className="size-2 rounded-full bg-[#E8546F]" />}
+                                        </span>
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {choice === "yes" && (
+                                  <>
                                 <div className="space-y-1.5">
-                                  <label className="block text-xs font-semibold text-[#5B4C47]">
-                                    Reference photo <span className="font-normal text-[#8A7B76]">(optional)</span>
-                                  </label>
 
                                   {detail.photo ? (
                                     <div className="flex items-center gap-3.5 rounded-xl border border-[#F0D5DC] bg-[#FFF8F9] p-3 max-w-md">
@@ -1191,7 +1238,7 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
                                       <label
                                         htmlFor={`cat-file-${ev.key}-${needId}`}
                                         className={cn(
-                                          "inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold transition shadow-2xs select-none",
+                                          "inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition shadow-2xs select-none",
                                           isBusy
                                             ? "border-[#E8546F] bg-[#FFF0F3] text-[#D6415C] opacity-75 cursor-not-allowed"
                                             : "border-[#F0D5DC] bg-[#FFF8F9] text-[#D6415C] hover:border-[#E8546F] hover:bg-[#FFF0F3] active:scale-[0.98]"
@@ -1205,7 +1252,7 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
                                         ) : (
                                           <>
                                             <Upload className="size-3.5" />
-                                            <span>Upload {needId} reference photo</span>
+                                            <span>Upload</span>
                                           </>
                                         )}
                                       </label>
@@ -1246,6 +1293,8 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
                                     />
                                   </div>
                                 </div>
+                                  </>
+                                )}
 
                                 {/* Specific notes for item (optional) */}
                                 <div>
@@ -1449,12 +1498,13 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
           </div>
         )}
 
-        <div className="flex items-center gap-3 pt-1">
+        {/* On phones the actions stay pinned to the bottom so they're always under the thumb */}
+        <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex items-center gap-3 rounded-b-3xl border-t border-[#F3D5DB] bg-white/95 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:static sm:mx-0 sm:mb-0 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:pt-1 sm:backdrop-blur-none">
           {step > 0 && (
             <button
               type="button"
               onClick={goBack}
-              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-[#E7DCD6] bg-white px-5 py-3.5 text-sm font-semibold text-[#5B4C47] transition hover:bg-[#FFF0F3]"
+              className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-full border border-[#E7DCD6] bg-white px-5 py-3 text-base font-semibold text-[#5B4C47] transition hover:bg-[#FFF0F3] sm:text-sm"
             >
               <ArrowLeft className="size-4" />
               Back
@@ -1463,7 +1513,7 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
           <button
             type="submit"
             disabled={submitting || photoBusy}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#E8546F] to-[#D6415C] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_4px_14px_rgba(232,84,111,.3)] transition hover:brightness-95 disabled:opacity-60"
+            className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#E8546F] to-[#D6415C] px-6 py-3 text-base font-semibold text-white sm:text-sm shadow-[0_4px_14px_rgba(232,84,111,.3)] transition hover:brightness-95 disabled:opacity-60"
           >
             {submitting && <Loader2 className="size-4 animate-spin" />}
             {step < LAST_STEP ? (
@@ -1491,7 +1541,8 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
 // ── small presentational helpers ──────────────────────────────────────────
 function inputCls(hasError: boolean) {
   return [
-    "w-full rounded-xl border bg-[#FBF6F3] px-3 py-2.5 text-sm text-[#2B2320] outline-none transition",
+    // 16px on phones stops iOS from zooming the page when a field is focused
+    "w-full min-h-12 rounded-xl border bg-[#FBF6F3] px-3 py-2.5 text-base text-[#2B2320] outline-none transition sm:min-h-0 sm:text-sm",
     "placeholder:text-[#B5A7A1] focus:bg-white focus:ring-2 focus:ring-[#E8546F]/30",
     hasError ? "border-[#D6415C]" : "border-[#E7DCD6] focus:border-[#E8546F]",
   ].join(" ");
@@ -1499,9 +1550,9 @@ function inputCls(hasError: boolean) {
 
 function Shell({ studio, children }: { studio: string; children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#FBF6F3] px-4 py-8 text-[#2B2320] sm:px-6 sm:py-12 lg:py-16">
+    <div className="min-h-screen bg-[#FBF6F3] px-3 py-6 text-[#2B2320] sm:px-6 sm:py-12 lg:py-16">
       <div className="mx-auto max-w-[850px]">
-        <header className="mb-8 text-center sm:mb-10">
+        <header className="mb-5 text-center sm:mb-10">
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9A6A1C]">
             Decoration Enquiry
           </p>

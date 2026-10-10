@@ -29,6 +29,8 @@ import {
   Lightbulb,
   Armchair,
   Check,
+  ChevronLeft,
+  ChevronRight,
   X,
   ZoomIn,
 } from "lucide-react";
@@ -130,6 +132,11 @@ export function DecorationDetailsModal({
   extraActions,
 }: DecorationDetailsModalProps) {
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
+  // Which of the decoration's photos is showing (0 = cover)
+  const [photoIdx, setPhotoIdx] = React.useState(0);
+  React.useEffect(() => {
+    setPhotoIdx(0);
+  }, [setup?.id, open]);
 
   // Close lightbox on Escape key without propagating to parent Dialog
   React.useEffect(() => {
@@ -160,9 +167,16 @@ export function DecorationDetailsModal({
   const totalPrice = computeDisplayPrice(setup);
   const specs = setup.specifications;
 
-  const heroImageUrl =
-    setup.imageUrl ||
+  const fallbackPhoto =
     "https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=1200&auto=format&fit=crop&q=85";
+  // Cover first, then the rest of the gallery, without duplicates
+  const photos = [setup.imageUrl, ...(setup.gallery ?? [])].filter(
+    (u, i, all): u is string => Boolean(u) && all.indexOf(u) === i,
+  );
+  if (photos.length === 0) photos.push(fallbackPhoto);
+  const currentIdx = Math.min(photoIdx, photos.length - 1);
+  const heroImageUrl = photos[currentIdx] ?? fallbackPhoto;
+  const stepPhoto = (dir: number) => setPhotoIdx((currentIdx + dir + photos.length) % photos.length);
 
   const colorDot = (colour: string) => {
     const map: Record<string, string> = {
@@ -221,6 +235,36 @@ export function DecorationDetailsModal({
               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
 
+            {photos.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous photo"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    stepPhoto(-1);
+                  }}
+                  className="absolute left-3 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition hover:bg-black/65 cursor-pointer"
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next photo"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    stepPhoto(1);
+                  }}
+                  className="absolute right-3 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition hover:bg-black/65 cursor-pointer"
+                >
+                  <ChevronRight className="size-5" />
+                </button>
+                <span className="absolute left-3.5 top-3.5 z-10 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
+                  {currentIdx + 1} / {photos.length}
+                </span>
+              </>
+            )}
+
             {/* Concentrated thin gradient band at the very bottom only — keeps florals & middle area 100% visible */}
             <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none" />
 
@@ -249,6 +293,26 @@ export function DecorationDetailsModal({
               )}
             </div>
           </div>
+
+        {photos.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto bg-muted/40 px-6 py-3" role="group" aria-label="Decoration photos">
+            {photos.map((url, i) => (
+              <button
+                key={url}
+                type="button"
+                onClick={() => setPhotoIdx(i)}
+                aria-label={`Show photo ${i + 1} of ${photos.length}`}
+                aria-current={i === currentIdx}
+                className={cn(
+                  "size-14 shrink-0 overflow-hidden rounded-lg border-2 transition cursor-pointer",
+                  i === currentIdx ? "border-primary" : "border-transparent opacity-70 hover:opacity-100",
+                )}
+              >
+                <img src={url} alt="" className="size-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ── Modal Body ── */}
         <div className="p-6 space-y-5 text-xs text-foreground">
@@ -348,6 +412,8 @@ export function DecorationDetailsModal({
                       ? "Fresh"
                       : f.type === "artificial"
                       ? "Silk / Artificial"
+                      : f.natural_percent !== undefined
+                      ? `Mixed (${f.natural_percent}% fresh · ${100 - f.natural_percent}% silk)`
                       : "Mixed";
                   return (
                     <div
@@ -551,7 +617,7 @@ export function DecorationDetailsModal({
         role="dialog"
         aria-modal="true"
         aria-label={`Full-screen photo view for ${displayName}`}
-        className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-6 animate-in fade-in-0 duration-200 cursor-zoom-out select-none"
+        className="pointer-events-auto fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-6 animate-in fade-in-0 duration-200 cursor-zoom-out select-none"
         onPointerDown={(e) => {
           e.stopPropagation();
         }}
@@ -595,6 +661,29 @@ export function DecorationDetailsModal({
             alt={displayName}
             className="max-w-[95vw] max-h-[90vh] object-contain rounded-xl shadow-2xl transition-transform"
           />
+          {photos.length > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="Previous photo"
+                onClick={() => stepPhoto(-1)}
+                className="absolute left-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md hover:bg-white/25 cursor-pointer"
+              >
+                <ChevronLeft className="size-6" />
+              </button>
+              <button
+                type="button"
+                aria-label="Next photo"
+                onClick={() => stepPhoto(1)}
+                className="absolute right-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md hover:bg-white/25 cursor-pointer"
+              >
+                <ChevronRight className="size-6" />
+              </button>
+              <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-xs font-semibold text-white">
+                {currentIdx + 1} / {photos.length}
+              </span>
+            </>
+          )}
         </div>
       </div>,
       document.body

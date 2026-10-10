@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fetchCompanyProfileFromSupabase, saveCompanyProfileToSupabase } from "./supabase-service";
 
 export type CompanyProfile = {
   name: string;
@@ -53,21 +54,41 @@ export const emptyProfile: CompanyProfile = {
   about: "",
 };
 
+export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
+  name: "Everest Events & Decor",
+  ownerName: "Sunil Shrestha",
+  phone: "+977-9801234567",
+  email: "hello@everestevents.com",
+  city: "Kathmandu",
+  services: ["Floral Decoration", "Stage & Mandap Setup", "Lighting & Effects"],
+  eventTypes: ["Weddings", "Receptions", "Engagements"],
+  teamSize: "16–40",
+  yearsActive: "4–7 years",
+  about: "Specialized in luxury floral decors, mandap designs and ambient lighting.",
+};
+
 const STORAGE_KEY = "decoration-portal:company-profile";
 
 export function loadProfile(): CompanyProfile | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") return DEFAULT_COMPANY_PROFILE;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as CompanyProfile) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw) as CompanyProfile;
+      if (parsed && typeof parsed.name === "string" && parsed.name.trim()) {
+        return parsed;
+      }
+    }
+    return DEFAULT_COMPANY_PROFILE;
   } catch {
-    return null;
+    return DEFAULT_COMPANY_PROFILE;
   }
 }
 
 export function saveProfile(profile: CompanyProfile) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+  void saveCompanyProfileToSupabase(profile);
 }
 
 export function clearProfile() {
@@ -76,12 +97,25 @@ export function clearProfile() {
 }
 
 export function useCompanyProfile() {
-  const [profile, setProfile] = useState<CompanyProfile | null>(null);
+  const [profile, setProfile] = useState<CompanyProfile | null>(loadProfile);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setProfile(loadProfile());
-    setReady(true);
+    fetchCompanyProfileFromSupabase().then((data) => {
+      if (data) {
+        setProfile(data);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        }
+      } else {
+        const local = loadProfile();
+        if (local) {
+          setProfile(local);
+          void saveCompanyProfileToSupabase(local);
+        }
+      }
+      setReady(true);
+    });
   }, []);
 
   return { profile, ready };
