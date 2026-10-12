@@ -184,6 +184,8 @@ export function getDecorItemBreakdown(
     pending?: boolean | undefined;
     setupId?: string | undefined;
     category?: string | undefined;
+    imageUrl?: string | undefined;
+    photo?: string | undefined;
   },
   catalogItemOverride?: DecorationSetupItem | null | undefined
 ): DecorItemBreakdown {
@@ -381,8 +383,10 @@ export function getDecorItemBreakdown(
     baseDesign,
     totalRow,
   };
-  if (catalog?.imageUrl !== undefined) bd.imageUrl = catalog.imageUrl;
+  const img = item.imageUrl || item.photo || catalog?.imageUrl;
+  if (img !== undefined) bd.imageUrl = img;
   if (catalog?.gallery !== undefined) bd.gallery = catalog.gallery;
+  else if (img) bd.gallery = [img];
   if (structure !== undefined) bd.structure = structure;
   if (florals !== undefined) bd.florals = florals;
   return bd;

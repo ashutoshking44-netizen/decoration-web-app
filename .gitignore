@@ -34,3 +34,5 @@ Thumbs.db
 *.temp
 # Old Git history backup
 **/.git-old-backup/
+
+supabase/.temp/

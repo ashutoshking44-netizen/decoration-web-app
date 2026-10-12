@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, Bell, CalendarDays, MessageCircle, Pencil, Phone, Users } from "lucide-react";
-import type { BookedClient } from "@/lib/clients";
+import { type BookedClient, getClientTotal, formatCurrency } from "@/lib/clients";
 import { daysUntil, formatBs, resolveClientDate } from "@/lib/booked-dates";
 import { cn } from "@/lib/utils";
 
@@ -76,7 +76,7 @@ export function BookedClientCard({
         )}
       </div>
 
-      <p className="text-sm font-semibold text-emerald-700">Rs. {client.total_amount.toLocaleString("en-IN")}</p>
+      <p className="text-sm font-semibold text-emerald-700">{formatCurrency(getClientTotal(client))}</p>
 
       <div className="mt-auto flex items-center gap-2" onClick={stop}>
         {client.phone ? (

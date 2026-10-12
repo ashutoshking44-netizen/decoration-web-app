@@ -12,6 +12,7 @@ import {
   Check,
 } from "lucide-react";
 import type { BookedClient, ClientCeremonyItem } from "@/lib/clients";
+import { healEmptyQuotationCeremonies, getCeremonySubtotal, getClientTotal } from "@/lib/clients";
 import { ceremoniesFromEnquiry, loadStoredEnquiries } from "@/lib/enquiries";
 import { useCompanyProfile } from "@/lib/company-profile";
 import { usePaymentQrs } from "@/lib/payment-qr";
@@ -39,6 +40,9 @@ export interface DayItem {
   pending?: boolean | undefined;
   setupId?: string | undefined;
   category?: string | undefined;
+  imageUrl?: string | undefined;
+  photo?: string | undefined;
+  description?: string | undefined;
 }
 
 export interface DaySchedule {
@@ -390,16 +394,6 @@ function DayCard({
             <b>NPR {formatNepaliNumber(total)}</b>
           </div>
 
-          {d.notes && d.notes.length > 0 && (
-            <div className="dp-notes">
-              <h5>WHAT WE AGREED</h5>
-              <ul>
-                {d.notes.map((n, k) => (
-                  <li key={k}>{n}</li>
-                ))}
-              </ul>
-            </div>
-          )}
         </>
       )}
 
@@ -623,35 +617,44 @@ export function DecorationProposalView({
   // Map real client ceremonies to schedule days. NO sample DAYS fallback!
   const days: DaySchedule[] = useMemo(() => {
     if (!client) return [];
-    // A quotation made from a website enquiry may not carry the decorations the client
-    // picked yet (e.g. created before they were saved); read them from the enquiry.
-    const hasDecor = client.ceremonies?.some((c) => (c.items?.length ?? 0) > 0 || c.setupName) ?? false;
+    // Heal empty quotation ceremonies from linked enquiry if needed
+    const healedClient = healEmptyQuotationCeremonies(client);
+    const effectiveClient = healedClient || client;
+
+    const hasDecor = effectiveClient.ceremonies?.some((c) => (c.items?.length ?? 0) > 0 || c.setupName) ?? false;
     const fromEnquiry = hasDecor
       ? null
       : (() => {
-          const enq = loadStoredEnquiries(true).find((e) => e.id === client.id);
+          const linkedEnquiryId = effectiveClient.enquiry_id || (effectiveClient.id.startsWith("enq-") ? effectiveClient.id : undefined);
+          const enq = loadStoredEnquiries(true).find(
+            (e) =>
+              e.id === effectiveClient.id ||
+              (linkedEnquiryId && e.id === linkedEnquiryId) ||
+              (effectiveClient.proposal_id && e.id.replace("enq-", "") === effectiveClient.proposal_id.replace(/^(prop-|q-)/i, "")) ||
+              (e.client_name && effectiveClient.client_name && e.client_name.trim().toLowerCase() === effectiveClient.client_name.trim().toLowerCase())
+          );
           return enq ? ceremoniesFromEnquiry(enq) : null;
         })();
     const rawCeremonies: ClientCeremonyItem[] = fromEnquiry
       ? fromEnquiry
-      : client.ceremonies && client.ceremonies.length > 0
-        ? client.ceremonies
+      : effectiveClient.ceremonies && effectiveClient.ceremonies.length > 0
+        ? effectiveClient.ceremonies
         : [
             {
               id: "c-1",
-              name: client.event_type || "Wedding Ceremony",
-              date: client.event_date || "Date on record",
-              venue: client.venue || "Venue on record",
-              setupPrice: client.total_amount || 0,
+              name: effectiveClient.event_type || "Wedding Ceremony",
+              date: effectiveClient.event_date || "Date on record",
+              venue: effectiveClient.venue || "Venue on record",
+              setupPrice: effectiveClient.total_amount || 0,
             },
           ];
 
     return rawCeremonies.map((c, idx) => {
       const { bs, ad } = parseCeremonyDate(c.date);
       const eventName = (c.name || `Ceremony ${idx + 1}`).toUpperCase();
-      const venue = c.venue || client?.venue || "Venue on record";
+      const venue = c.venue || effectiveClient?.venue || "Venue on record";
 
-      // 1. Build real items only
+      // 1. Build real items only directly from saved quotation
       let items: DayItem[] = [];
 
       if (c.items && c.items.length > 0) {
@@ -662,13 +665,23 @@ export function DecorationProposalView({
             : it.category
             ? `${it.category} arrangement`
             : "Ceremonial setup";
+          const price =
+            Number(it.price) ||
+            (Number((it as any).unitPrice) ? (Number((it as any).quantity) || 1) * Number((it as any).unitPrice) : 0) ||
+            Number(c.setupPrice) ||
+            Number(cat?.total_price) ||
+            0;
+          const img = it.imageUrl || it.photo || cat?.imageUrl || c.setupImage || "";
           return {
             n: it.name,
-            s: it.description || autoSub,
-            p: Number(it.price) || 0,
-            pending: it.pending ?? (!it.price || it.price === 0),
+            s: it.description || (it as any).details || autoSub,
+            p: price,
+            pending: it.pending ?? (!price || price === 0),
             setupId: it.setupId || cat?.id,
             category: it.category || cat?.category,
+            imageUrl: img,
+            photo: img,
+            description: it.description || (it as any).details || autoSub,
           };
         });
       } else if (c.setupName && c.setupName.includes(" + ")) {
@@ -681,33 +694,44 @@ export function DecorationProposalView({
             : cat?.category
             ? `${cat.category} arrangement`
             : "Ceremonial setup";
+          const price = Number(cat?.total_price) || 0;
+          const img = cat?.imageUrl || c.setupImage || "";
           return {
             n: trimmed,
             s: autoSub,
-            p: Number(cat?.total_price) || 0,
-            pending: !cat?.total_price,
+            p: price,
+            pending: !price,
             setupId: cat?.id,
             category: cat?.category,
+            imageUrl: img,
+            photo: img,
+            description: autoSub,
           };
         });
-      } else if (c.setupName) {
-        const cat = findCatalogSetup(c.setupId || c.setupName);
+      } else if (c.setupName || c.setupPrice || c.subtotal || effectiveClient.total_amount) {
+        const cat = findCatalogSetup(c.setupId || c.setupName || "");
+        const catTitle = cat?.name || c.setupName || c.name || "Wedding Decoration";
         const autoSub = cat?.specifications
           ? generateDecorSummary(cat.specifications, c.category || cat?.category)
           : c.category
           ? `${c.category} arrangement`
           : "Ceremonial setup";
+        const price = Number(c.setupPrice) || Number(c.subtotal) || Number(cat?.total_price) || Number(effectiveClient.total_amount) || 0;
+        const img = c.setupImage || cat?.imageUrl || "/gallery/wedding-1.jpg";
         items = [
           {
-            n: c.setupName,
+            n: catTitle,
             s: autoSub,
-            p: Number(c.setupPrice) || 0,
+            p: price,
             pending:
               c.setupPrice === undefined ||
               c.setupPrice === null ||
               Number(c.setupPrice) === 0,
             setupId: c.setupId || cat?.id,
-            category: c.category || cat?.category,
+            category: c.category || cat?.category || "Stage",
+            imageUrl: img,
+            photo: img,
+            description: autoSub,
           },
         ];
       } else {
@@ -718,13 +742,16 @@ export function DecorationProposalView({
       const photos: { src: string; cap: string; g: string }[] = [];
       items.forEach((item, itemIdx) => {
         const cat = findCatalogSetup(item.setupId || item.n);
-        const imgUrl = c.setupImage || cat?.imageUrl || "";
+        const itemImg = item.imageUrl || item.photo || (c.items?.[itemIdx] as any)?.imageUrl || (c.items?.[itemIdx] as any)?.photo;
+        const imgUrl = itemImg || c.setupImage || cat?.imageUrl || "";
         const gradient = `g${(itemIdx % 5) + 1}`;
-        photos.push({
-          src: imgUrl,
-          cap: item.n,
-          g: gradient,
-        });
+        if (imgUrl) {
+          photos.push({
+            src: imgUrl,
+            cap: item.n,
+            g: gradient,
+          });
+        }
         if (cat?.gallery && cat.gallery.length > 0) {
           cat.gallery.forEach((gSrc) => {
             if (gSrc && gSrc !== imgUrl) {
@@ -873,8 +900,8 @@ export function DecorationProposalView({
           seen.add(item.n);
           const bd = getDecorItemBreakdown(item);
           list.push({
-            name: bd.itemName,
-            image: bd.imageUrl,
+            name: bd.itemName || item.n,
+            image: item.imageUrl || item.photo || bd.imageUrl || undefined,
             g: `g${(list.length % 5) + 1}`,
           });
         }
@@ -882,6 +909,57 @@ export function DecorationProposalView({
     });
     return list;
   }, [days]);
+
+  // Social links: custom links from company profile if saved, or default links (hidden if company has none/disabled)
+  const socialLinks: Array<{ name: string; icon: string; url: string }> = useMemo(() => {
+    const p = profile as any;
+    if (p?.socialLinks && typeof p.socialLinks === "object") {
+      const entries = Array.isArray(p.socialLinks)
+        ? p.socialLinks
+        : Object.entries(p.socialLinks)
+            .filter(([_, url]) => Boolean(url))
+            .map(([k, url]) => ({
+              name: k.charAt(0).toUpperCase() + k.slice(1),
+              icon: k.toLowerCase().includes("face") ? "📘" : k.toLowerCase().includes("insta") ? "◈" : k.toLowerCase().includes("tik") ? "♪" : k.toLowerCase().includes("you") ? "▶" : "🔗",
+              url: String(url),
+            }));
+      if (entries.length === 0) return [];
+      return entries;
+    }
+    if (p?.social_links && typeof p.social_links === "object") {
+      const entries = Array.isArray(p.social_links)
+        ? p.social_links
+        : Object.entries(p.social_links)
+            .filter(([_, url]) => Boolean(url))
+            .map(([k, url]) => ({
+              name: k.charAt(0).toUpperCase() + k.slice(1),
+              icon: k.toLowerCase().includes("face") ? "📘" : k.toLowerCase().includes("insta") ? "◈" : k.toLowerCase().includes("tik") ? "♪" : k.toLowerCase().includes("you") ? "▶" : "🔗",
+              url: String(url),
+            }));
+      if (entries.length === 0) return [];
+      return entries;
+    }
+    if (p?.hasSocialLinks === false || p?.showSocialLinks === false || p?.showSocial === false) {
+      return [];
+    }
+    if (p?.facebook || p?.instagram || p?.tiktok || p?.youtube) {
+      return [
+        p.facebook ? { name: "Facebook", icon: "📘", url: p.facebook } : null,
+        p.instagram ? { name: "Instagram", icon: "◈", url: p.instagram } : null,
+        p.tiktok ? { name: "TikTok", icon: "♪", url: p.tiktok } : null,
+        p.youtube ? { name: "YouTube", icon: "▶", url: p.youtube } : null,
+      ].filter(Boolean) as Array<{ name: string; icon: string; url: string }>;
+    }
+    if (p && ("socialLinks" in p || "social_links" in p) && !p.socialLinks && !p.social_links) {
+      return [];
+    }
+    return [
+      { name: "Facebook", icon: "📘", url: "#" },
+      { name: "Instagram", icon: "◈", url: "#" },
+      { name: "TikTok", icon: "♪", url: "#" },
+      { name: "YouTube", icon: "▶", url: "#" },
+    ];
+  }, [profile]);
 
   const packageLabel = `${days.length} ${days.length === 1 ? "DAY" : "DAYS"} DÉCOR PACKAGE`;
 
@@ -2579,27 +2657,50 @@ export function DecorationProposalView({
           </div>
         </section>
 
-        {/* 4. Find Us Online */}
-        <section className="dp-pad">
-          <div className="dp-divider">FIND US ONLINE</div>
-          <div className="dp-social">
-            <a href="#" onClick={(e) => e.preventDefault()}>
-              📘 Facebook
-            </a>
-            <a href="#" onClick={(e) => e.preventDefault()}>
-              ◈ Instagram
-            </a>
-            <a href="#" onClick={(e) => e.preventDefault()}>
-              ♪ TikTok
-            </a>
-            <a href="#" onClick={(e) => e.preventDefault()}>
-              ▶ YouTube
-            </a>
-          </div>
-        </section>
+        {/* 4. Optional Add-ons (Only rendered if quotation has configured add-ons) */}
+        {quotationAddons.length > 0 && (
+          <section className="dp-pad">
+            <div className="dp-divider">OPTIONAL ADD-ONS</div>
+            <p
+              style={{
+                textAlign: "center",
+                color: "var(--dp-ink-2)",
+                margin: "-6px auto 22px",
+                maxWidth: "36ch",
+                fontSize: 14.5,
+              }}
+            >
+              Select any additional add-ons configured for this quotation. The total updates instantly.
+            </p>
 
-        {/* 5. Reveal / Total Card */}
-        <section className="dp-pad" style={{ paddingTop: 0 }}>
+            {quotationAddons.map((a) => (
+              <div className="dp-addon" key={a.id}>
+                <div className="dp-addonhead">
+                  <div className="dp-aicon">{a.icon}</div>
+                  <div>
+                    <div className="dp-aname">{a.name}</div>
+                    <div className="dp-aprice">
+                      <b>NPR {npr(a.price)}</b> / {a.unit}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={"dp-switch" + (on[a.id] ? " on" : "")}
+                    onClick={() => toggle(a.id)}
+                    aria-pressed={!!on[a.id]}
+                    aria-label={"Add " + a.name}
+                  >
+                    <i />
+                  </button>
+                </div>
+                {a.desc && <p className="dp-adesc">{a.desc}</p>}
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* 5. Total Quotation */}
+        <section className="dp-pad" style={quotationAddons.length > 0 ? { paddingTop: 0 } : undefined}>
           {!revealed ? (
             <button
               type="button"
@@ -2695,45 +2796,23 @@ export function DecorationProposalView({
           )}
         </section>
 
-        {/* 6. Optional Add-ons (Only rendered if quotation has configured add-ons) */}
-        {quotationAddons.length > 0 && (
-          <section className="dp-pad" style={{ paddingTop: 6 }}>
-            <div className="dp-divider">OPTIONAL ADD-ONS</div>
-            <p
-              style={{
-                textAlign: "center",
-                color: "var(--dp-ink-2)",
-                margin: "-6px auto 22px",
-                maxWidth: "36ch",
-                fontSize: 14.5,
-              }}
-            >
-              Select any additional add-ons configured for this quotation. The total updates instantly.
-            </p>
-
-            {quotationAddons.map((a) => (
-              <div className="dp-addon" key={a.id}>
-                <div className="dp-addonhead">
-                  <div className="dp-aicon">{a.icon}</div>
-                  <div>
-                    <div className="dp-aname">{a.name}</div>
-                    <div className="dp-aprice">
-                      <b>NPR {npr(a.price)}</b> / {a.unit}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className={"dp-switch" + (on[a.id] ? " on" : "")}
-                    onClick={() => toggle(a.id)}
-                    aria-pressed={!!on[a.id]}
-                    aria-label={"Add " + a.name}
-                  >
-                    <i />
-                  </button>
-                </div>
-                {a.desc && <p className="dp-adesc">{a.desc}</p>}
-              </div>
-            ))}
+        {/* 6. Find Us Online (Rendered directly below Total quotation) */}
+        {socialLinks.length > 0 && (
+          <section className="dp-pad" style={{ paddingTop: 0 }}>
+            <div className="dp-divider">FIND US ONLINE</div>
+            <div className="dp-social">
+              {socialLinks.map((item, idx) => (
+                <a
+                  key={idx}
+                  href={item.url || "#"}
+                  target={item.url && item.url !== "#" ? "_blank" : undefined}
+                  rel={item.url && item.url !== "#" ? "noopener noreferrer" : undefined}
+                  onClick={item.url === "#" ? (e) => e.preventDefault() : undefined}
+                >
+                  {item.icon} {item.name}
+                </a>
+              ))}
+            </div>
           </section>
         )}
 

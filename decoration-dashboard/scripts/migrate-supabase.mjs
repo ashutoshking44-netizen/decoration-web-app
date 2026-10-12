@@ -1,10 +1,31 @@
 import pg from "pg";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 const { Client } = pg;
 
-const DB_HOST = process.env.DB_HOST || "db.vxjnracrjiuowuiuasrz.supabase.co";
+// Read .env if present
+const here = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.resolve(here, "../.env");
+if (fs.existsSync(envPath)) {
+  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+    if (match && !process.env[match[1]]) {
+      process.env[match[1]] = match[2]?.replace(/^['"](.*)['"]$/, "$1") || "";
+    }
+  }
+}
+
+const DB_HOST = process.env.DB_HOST;
 const DB_PORT = Number(process.env.DB_PORT || 5432);
 const DB_USER = process.env.DB_USER || "postgres";
-const DB_PASSWORD = process.env.DB_PASSWORD || "";
+const DB_PASSWORD = process.env.DB_PASSWORD;
+if (!DB_HOST || !DB_PASSWORD) {
+  console.error("Set DB_HOST and DB_PASSWORD in .env");
+  process.exit(1);
+}
 const DB_NAME = process.env.DB_NAME || "postgres";
 
 const schemaSql = `

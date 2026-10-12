@@ -10,7 +10,8 @@ import {
 import type { BookedClient } from "./clients";
 import type { DecorationSetupItem } from "./decoration-setups";
 import type { PaymentQr } from "./payment-qr";
-import type { CompanyProfile } from "./company-profile";
+import type { CompanyProfile, CompanySummary } from "./company-profile";
+import { isDataImageUrl, toStorageUrl } from "./image-storage";
 import { convertAdToBs } from "./event-schedule";
 import { containsPhotoRef, resolveEnquiryPhotoRefs } from "./enquiry-repository";
 
@@ -124,7 +125,9 @@ function mapEnquiryListRow(row: any): EnquiryListRow {
     id: row.id,
     client_name: row.client_name || "",
     phone: row.phone || "",
-    whatsapp_number: row.whatsapp_number || undefined,
+    whatsapp_number: row.whatsapp_number || row.whatsappNumber || undefined,
+    whatsappNumber: row.whatsappNumber || row.whatsapp_number || undefined,
+    whatsappSameAsPhone: row.whatsapp_same_as_phone ?? row.whatsappSameAsPhone ?? true,
     email: row.email || undefined,
     location: row.location || "Kathmandu · Inside Kathmandu",
     source: normalizeEnquirySource(row.source),
@@ -303,7 +306,7 @@ export async function upsertEnquiryInSupabase(item: EnquiryItem): Promise<boolea
       id: item.id,
       client_name: item.client_name,
       phone: item.phone,
-      whatsapp_number: item.whatsapp_number || null,
+      whatsapp_number: item.whatsappNumber || item.whatsapp_number || null,
       email: item.email || null,
       location: item.location || null,
       source: item.source || "Website",
@@ -382,6 +385,8 @@ export async function fetchBookedClientByIdFromSupabase(id: string): Promise<Boo
 function mapBookedClientRow(row: any): BookedClient {
   return {
     id: row.id,
+    ...(row.enquiry_id ? { enquiry_id: String(row.enquiry_id) } : {}),
+    ...(row.company_id ? { company_id: String(row.company_id) } : {}),
     client_name: row.client_name || "",
     event_type: row.event_type || "",
     event_date: row.event_date || "",
@@ -454,7 +459,15 @@ export async function upsertBookedClientInSupabase(item: BookedClient): Promise<
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from("booked_clients").upsert(payload, { onConflict: "id" });
+    // enquiry_id / company_id tie a client to its company; older databases lack the columns
+    // (run supabase/storage.sql), so retry without them rather than losing the whole save.
+    let { error } = await supabase
+      .from("booked_clients")
+      .upsert({ ...payload, enquiry_id: item.enquiry_id || null, company_id: item.company_id || null }, { onConflict: "id" });
+    if (error && /column|PGRST204/i.test(`${error.code} ${error.message}`)) {
+      console.warn("booked_clients.enquiry_id/company_id missing - run supabase/storage.sql. Saving without them.");
+      ({ error } = await supabase.from("booked_clients").upsert(payload, { onConflict: "id" }));
+    }
     if (error) {
       console.error("Supabase upsert booked client failed:", error);
       return false;
@@ -538,8 +551,29 @@ function mapDecorationRow(row: any): DecorationSetupItem {
   };
 }
 
-export async function upsertDecorationInSupabase(item: DecorationSetupItem): Promise<boolean> {
+/** True when a decoration still holds a photo as an inline (data URL) image. */
+export function hasInlineImages(item: DecorationSetupItem): boolean {
+  return isDataImageUrl(item.imageUrl) || (item.gallery || []).some(isDataImageUrl);
+}
+
+/** Returns the decoration with its inline photos compressed and moved to Supabase Storage. */
+export async function moveDecorationImagesToStorage(item: DecorationSetupItem): Promise<DecorationSetupItem> {
+  if (!hasInlineImages(item)) return item;
+  const imageUrl = await toStorageUrl(item.imageUrl);
+  const gallery = await Promise.all((item.gallery || []).map((u) => toStorageUrl(u)));
+  return { ...item, imageUrl, gallery };
+}
+
+export async function upsertDecorationInSupabase(original: DecorationSetupItem): Promise<boolean> {
   try {
+    const item = await moveDecorationImagesToStorage(original);
+    if (hasInlineImages(item)) {
+      // Never store raw base64 photos in the table: keep the row out of Supabase until the upload works.
+      console.error(
+        "[decorations] Photo upload to Storage failed, decoration not saved. Run supabase/storage.sql in the Supabase SQL editor (creates the 'decoration-images' bucket and policies)."
+      );
+      return false;
+    }
     const price = Number(
       item.total_price ??
         item.specifications?.base_pricing_rate ??
@@ -570,8 +604,6 @@ export async function upsertDecorationInSupabase(item: DecorationSetupItem): Pro
       status: item.status || "Live",
       company_id: compId,
       company_name: compName,
-      companyId: compId,
-      companyName: compName,
       image_url: item.imageUrl || null,
       images: item.gallery || [],
       applicable_events: item.applicable_events || [],
@@ -671,11 +703,14 @@ export async function savePaymentQrsToSupabase(list: PaymentQr[]): Promise<boole
  * The stored company profile, or null when none has been saved yet.
  * Throws SupabaseRequestError on failure (a failure is not "no profile").
  */
-export async function fetchCompanyProfileFromSupabase(): Promise<CompanyProfile | null> {
+/** The first company keeps the original row id "default". Every other company uses its own id. */
+const profileRowId = (companyId?: string) => (!companyId || companyId === "company-1" ? "default" : companyId);
+
+export async function fetchCompanyProfileFromSupabase(companyId?: string): Promise<CompanyProfile | null> {
   const { data, error, status } = await supabase
     .from("company_profile")
     .select("*")
-    .eq("id", "default")
+    .eq("id", profileRowId(companyId))
     .maybeSingle();
   if (error) throw toRequestError(error, status);
   if (!data) return null;
@@ -693,10 +728,25 @@ export async function fetchCompanyProfileFromSupabase(): Promise<CompanyProfile 
   };
 }
 
-export async function saveCompanyProfileToSupabase(profile: CompanyProfile): Promise<boolean> {
+/** Every company saved in Supabase (for the company picker). */
+export async function listCompaniesFromSupabase(): Promise<CompanySummary[]> {
+  const { data, error, status } = await supabase
+    .from("company_profile")
+    .select("id,name,owner_name,city")
+    .order("name");
+  if (error) throw toRequestError(error, status);
+  return (data || []).map((r: any) => ({
+    id: r.id === "default" ? "company-1" : String(r.id),
+    name: r.name || "Untitled company",
+    ownerName: r.owner_name || "",
+    city: r.city || "",
+  }));
+}
+
+export async function saveCompanyProfileToSupabase(profile: CompanyProfile, companyId?: string): Promise<boolean> {
   try {
     const payload = {
-      id: "default",
+      id: profileRowId(companyId),
       name: profile.name,
       owner_name: profile.ownerName,
       phone: profile.phone,

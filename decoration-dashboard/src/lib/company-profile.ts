@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { fetchCompanyProfileFromSupabase, saveCompanyProfileToSupabase } from "./supabase-service";
 
+export type CompanySummary = { id: string; name: string; ownerName: string; city: string };
+
 export type CompanyProfile = {
   name: string;
   ownerName: string;
@@ -85,10 +87,58 @@ export function loadProfile(): CompanyProfile | null {
   }
 }
 
-export function saveProfile(profile: CompanyProfile) {
+/** The saved profile of the open company, or null (no default fallback). */
+export function loadStoredProfile(): CompanyProfile | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CompanyProfile;
+    return parsed && typeof parsed.name === "string" && parsed.name.trim() ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Which company is open on this browser (testing stage: pick a company, no password) ──
+const ACTIVE_KEY = "decoration-portal:active-company";
+
+export function getActiveCompanyId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(ACTIVE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Open a company. Pass its profile to show it straight away. */
+export function setActiveCompany(id: string, profile?: CompanyProfile | null) {
   if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACTIVE_KEY, id);
+  if (profile) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+  else window.localStorage.removeItem(STORAGE_KEY);
+  profileRemoteLoad = null;
+}
+
+/** Log out: no company is open. Saved companies and their data stay in Supabase. */
+export function logoutCompany() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ACTIVE_KEY);
+  window.localStorage.removeItem(STORAGE_KEY);
+  profileRemoteLoad = null;
+}
+
+/** Saves the open company's profile. With no company open, it creates a new company and opens it. */
+export async function saveProfile(profile: CompanyProfile): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  let id = getActiveCompanyId();
+  if (!id) {
+    id = `company-${Date.now().toString(36)}`;
+    window.localStorage.setItem(ACTIVE_KEY, id);
+  }
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-  void saveCompanyProfileToSupabase(profile);
+  return await saveCompanyProfileToSupabase(profile, id);
 }
 
 export function clearProfile() {
@@ -105,7 +155,7 @@ const PROFILE_FRESH_MS = 30_000;
 function loadRemoteProfile(): Promise<CompanyProfile | null | undefined> {
   if (profileRemoteLoad && Date.now() - profileRemoteLoadedAt < PROFILE_FRESH_MS) return profileRemoteLoad;
   profileRemoteLoadedAt = Date.now();
-  profileRemoteLoad = fetchCompanyProfileFromSupabase().catch((err) => {
+  profileRemoteLoad = fetchCompanyProfileFromSupabase(getActiveCompanyId() || undefined).catch((err) => {
     console.warn("[company-profile] Loading profile from Supabase failed:", err);
     profileRemoteLoad = null;
     return undefined;
@@ -119,6 +169,10 @@ export function useCompanyProfile() {
 
   useEffect(() => {
     let active = true;
+    if (!getActiveCompanyId()) {
+      setReady(true);
+      return;
+    }
     void loadRemoteProfile().then((data) => {
       if (!active) return;
       if (data) {
@@ -131,7 +185,7 @@ export function useCompanyProfile() {
         const local = loadProfile();
         if (local) {
           setProfile(local);
-          void saveCompanyProfileToSupabase(local);
+          void saveCompanyProfileToSupabase(local, getActiveCompanyId() || undefined);
         }
       }
       // data === undefined: the request failed; keep the local profile, write nothing.

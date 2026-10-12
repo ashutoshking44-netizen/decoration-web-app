@@ -224,6 +224,8 @@ interface ServerEnquiry {
   type: "quotation-request" | "direct-order";
   name: string;
   phone: string;
+  whatsappNumber?: string;
+  whatsappSameAsPhone?: boolean;
   email: string;
   message: string;
   venue: string;
@@ -293,7 +295,9 @@ function toEnquiry(s: ServerEnquiry): EnquiryItem {
     id: s.id,
     client_name: s.name,
     phone,
-    whatsapp_number: digits(phone) || undefined,
+    whatsapp_number: s.whatsappNumber ? digits(s.whatsappNumber) : (digits(phone) || undefined),
+    whatsappNumber: s.whatsappNumber || digits(phone) || undefined,
+    whatsappSameAsPhone: s.whatsappSameAsPhone ?? true,
     email: s.email || undefined,
     location: s.venue || first.venue,
     source: "Website",

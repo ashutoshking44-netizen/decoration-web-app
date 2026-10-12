@@ -6,6 +6,7 @@
     "dev": "npm --prefix decoration-dashboard run dev",
     "build": "npm --prefix decoration-dashboard run build",
     "preview": "npm --prefix decoration-dashboard run preview",
+    "migrate": "npm --prefix decoration-dashboard run migrate",
     "share": "npm --prefix decoration-dashboard run share"
   }
 }

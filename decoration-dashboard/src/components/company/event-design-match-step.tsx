@@ -15,6 +15,13 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { compressImage, type DecorationSetupItem } from "@/lib/decoration-setups";
 import { extractPrice } from "./decoration-catalog-card";
 import {
@@ -123,18 +130,13 @@ export function EventDesignMatchStep({
           </p>
         )}
 
-        {/* ── Left: our design · Right: the client's inspiration, with its questions inside ── */}
-        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
-          <div className="space-y-3">
-            {ourPicks.length > 0 ? (
-              ourPicks.map((p) => <DesignCard key={p.key} pick={p} tone="ours" />)
-            ) : (
-              <div className="flex min-h-24 items-center justify-center rounded-xl border border-dashed border-stone-300 bg-white/60 px-4 text-center text-sm text-stone-500">
-                No design from our catalogue was selected for {eventName}.
-              </div>
-            )}
-          </div>
-
+        {/* ── The client's inspiration: photo on the left, questions on the right ── */}
+        <div className="grid grid-cols-1 items-start gap-3">
+          {references.length === 0 && (
+            <div className="flex min-h-24 items-center justify-center rounded-xl border border-dashed border-stone-300 bg-white/60 px-4 text-center text-sm text-stone-500">
+              No client inspiration was sent for {eventName}.
+            </div>
+          )}
           <div className="space-y-3">
             {references.map((ref) => {
               const a = answers[ref.key];
@@ -260,6 +262,92 @@ export function EventDesignMatchStep({
   );
 }
 
+const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+
+/** Full details of a design the client sent: price, description, inclusions and specs. */
+function PickDetails({ pick }: { pick: DesignPick }) {
+  const raw: any = pick.raw ?? {};
+  const price = Number(raw.price ?? raw.listedPrice ?? 0) || 0;
+  const unit = str(raw.priceUnit);
+  const description = str(raw.description);
+  const inclusions: string[] = Array.isArray(raw.inclusions)
+    ? raw.inclusions.filter((x: unknown) => typeof x === "string" && x.trim())
+    : [];
+  const rows: { label: string; value: string }[] = [];
+  const add = (label: string, v: unknown) => {
+    const s = str(v);
+    if (s) rows.push({ label, value: s });
+  };
+  add("Category", pick.category);
+  add("Company", pick.companyName);
+  add("Style", raw.style);
+  add("Colours", raw.colours);
+  add("Size", raw.dimensions || raw.size);
+  add("Structure", raw.structure);
+  add("Flowers", raw.flowers);
+  add("Platform", raw.platform);
+  add("Lighting", raw.lighting);
+  return (
+    <div className="space-y-4">
+      <div className="flex items-baseline justify-between rounded-xl border border-stone-200 bg-stone-50 p-4">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Price</span>
+        <span className="text-lg font-bold" style={{ color: ROSE }}>
+          {price > 0 ? `Rs. ${price.toLocaleString("en-IN")}` : "Custom quote"}
+          {price > 0 && unit && (
+            <span className="ml-1 text-xs font-medium text-stone-500">
+              {unit.startsWith("/") ? unit : `/ ${unit}`}
+            </span>
+          )}
+        </span>
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+          Description &amp; Inclusions
+        </div>
+        {description ? (
+          <p className="whitespace-pre-line text-xs leading-relaxed text-stone-600">{description}</p>
+        ) : (
+          <p className="text-xs italic text-stone-400">No description provided.</p>
+        )}
+        {inclusions.length > 0 && (
+          <div className="space-y-1.5 border-t border-stone-200 pt-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+              Inclusions ({inclusions.length})
+            </div>
+            <ul className="space-y-1.5">
+              {inclusions.map((inc, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-stone-600">
+                  <span className="mt-1 shrink-0 text-xs font-bold leading-none" style={{ color: ROSE }}>
+                    •
+                  </span>
+                  <span className="flex-1 leading-snug">{inc}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {rows.length > 0 && (
+        <div className="space-y-2.5 rounded-xl border border-stone-200 bg-stone-50 p-4">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Details</div>
+          <div className="divide-y divide-stone-200/70 text-xs">
+            {rows.map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
+                <span className="shrink-0 font-medium text-stone-500">{row.label}</span>
+                <span className="max-w-[220px] truncate text-right font-semibold text-stone-800" title={row.value}>
+                  {row.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DesignCard({
   pick,
   tone,
@@ -273,12 +361,22 @@ function DesignCard({
   children?: React.ReactNode;
 }) {
   const [broken, setBroken] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   return (
     <article
       id={id}
-      className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xs"
+      className={cn(
+        "overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xs",
+        children && "sm:flex",
+      )}
     >
-      <div className="h-40 w-full bg-stone-100 sm:h-44">
+      <div className={cn(children && "sm:w-[58%] sm:shrink-0")}>
+      <button
+        type="button"
+        onClick={() => setDetailsOpen(true)}
+        className="block h-56 w-full cursor-pointer bg-stone-100 sm:h-[26rem]"
+        aria-label={`View details of ${pick.name}`}
+      >
         {pick.image && !broken ? (
           <img
             src={pick.image}
@@ -293,7 +391,7 @@ function DesignCard({
             No image
           </div>
         )}
-      </div>
+      </button>
       <div className="space-y-1 px-3.5 py-3">
         <p
           className={cn(
@@ -312,9 +410,30 @@ function DesignCard({
             .join(" · ")}
         </p>
       </div>
+      </div>
       {children && (
-        <div className="space-y-3.5 border-t border-stone-100 px-3.5 pb-3.5 pt-3">{children}</div>
+        <div className="space-y-3.5 border-t border-stone-100 px-3.5 pb-3.5 pt-3 sm:min-w-0 sm:flex-1 sm:border-l sm:border-t-0 sm:px-5 sm:py-4">
+          {children}
+        </div>
       )}
+      <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <SheetContent side="left" className="w-full space-y-5 overflow-y-auto bg-white p-6 sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle className="text-left">{pick.name}</SheetTitle>
+            <SheetDescription className="text-left">
+              {tone === "reference" ? "Client's inspiration" : "Our catalogue"}
+            </SheetDescription>
+          </SheetHeader>
+          {pick.image && !broken ? (
+            <img src={pick.image} alt={pick.name} className="w-full rounded-xl object-cover" />
+          ) : (
+            <div className="flex h-48 items-center justify-center rounded-xl bg-stone-100 text-xs text-stone-400">
+              No image
+            </div>
+          )}
+          <PickDetails pick={pick} />
+        </SheetContent>
+      </Sheet>
     </article>
   );
 }

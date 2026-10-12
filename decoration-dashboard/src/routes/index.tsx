@@ -1,10 +1,10 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { loadProfile } from "@/lib/company-profile";
+import { getActiveCompanyId } from "@/lib/company-profile";
 
 export const Route = createFileRoute("/")({
   ssr: false,
   beforeLoad: () => {
-    throw redirect({ to: loadProfile() ? "/company" : "/setup" });
+    throw redirect({ to: getActiveCompanyId() ? "/company" : "/companies" });
   },
   head: () => ({
     meta: [

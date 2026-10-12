@@ -34,12 +34,14 @@ export function entriesToSchedule(
   return [...entries]
     .sort((a, b) => a.dateAd.localeCompare(b.dateAd))
     .map((e, i) => {
-      const prev = previous.find((p) => p.id === e.id);
+      const prev = previous.find((p) => p.id === e.id) || previous[i];
       const bs = convertAdToBs(e.dateAd);
+      const stableId = prev?.id || e.id || `c-${i + 1}`;
+      const name = prev?.isCustom && prev?.name ? prev.name : prev?.name && !prev.name.startsWith("Event ") ? prev.name : `Event ${i + 1}`;
       return {
-        id: e.id,
-        name: prev?.isCustom && prev?.name ? prev.name : `Event ${i + 1}`,
-        isCustom: Boolean(prev?.isCustom),
+        id: stableId,
+        name,
+        isCustom: Boolean(prev?.isCustom || (prev?.name && !prev.name.startsWith("Event "))),
         dateAd: e.dateAd,
         dateBs: bs ? bs.formatted : "",
         venueClassification: prev?.venueClassification || "Banquet & Ballroom",

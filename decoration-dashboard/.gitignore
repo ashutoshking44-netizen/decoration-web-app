@@ -33,3 +33,8 @@ dist-ssr
 
 # Shared API data (uploads + db)
 server/data/
+
+# Secrets
+.env
+.env.local
+.env.*.local

@@ -26,6 +26,10 @@ import {
   BOOKING_STAGES,
   useBookedClientsStore,
   computeDecorationItemPrice,
+  formatCurrency,
+  getClientTotal,
+  getCeremonySubtotal,
+  findClientById,
 } from "@/lib/clients";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -61,9 +65,15 @@ export function BookedClientsPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search);
-      const clientId = p.get("client");
+      const clientId = p.get("client") || p.get("clientId");
       if (clientId) {
-        const found = clients.find((c) => c.id === clientId);
+        const found =
+          clients.find(
+            (c) =>
+              c.id === clientId ||
+              c.enquiry_id === clientId ||
+              c.proposal_id === clientId
+          ) || findClientById(clientId);
         if (found) setSelectedBooking(found);
       }
     }
@@ -541,18 +551,99 @@ export function BookedClientsPage() {
                 </div>
               </DialogHeader>
 
-              {/* Total Price Line: sum of every decoration setup's price listed below */}
+              {/* Total Price Line: shared single source of truth across the app */}
               <div className="flex items-baseline gap-2 py-1">
                 <span className="text-sm font-semibold text-[#8A7B76]">Total:</span>
                 <span className="font-display text-2xl font-bold text-[#2B2320] tabular-nums">
-                  ₹{(selectedBooking.decorations || [])
-                    .reduce((sum, d) => sum + computeDecorationItemPrice(d), 0)
-                    .toLocaleString()}
+                  {formatCurrency(getClientTotal(selectedBooking))}
                 </span>
               </div>
 
-              {/* Decoration Setups Included (with live per-item flower-cost totals) */}
-              {selectedBooking.decorations && selectedBooking.decorations.length > 0 && (
+              {/* Events & Ceremonies Included (with each event's subtotal) */}
+              {selectedBooking.ceremonies && selectedBooking.ceremonies.length > 0 && (
+                <div className="rounded-[18px] border border-[#E7DCD6] bg-white p-4.5 space-y-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#4A3F3C] flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="size-3.5 text-[#E8546F]" />
+                      Events & Ceremonies ({selectedBooking.ceremonies.length})
+                    </span>
+                  </span>
+                  <div className="divide-y divide-[#F0EBE7]">
+                    {selectedBooking.ceremonies.map((c, i) => {
+                      const eventSubtotal = getCeremonySubtotal(c);
+                      return (
+                        <div key={c.id || i} className="py-2.5 text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <strong className="text-[#2B2320] font-semibold text-sm">{c.name}</strong>
+                            <span className="font-extrabold text-[#4A3F3C] tabular-nums text-sm">
+                              {formatCurrency(eventSubtotal)}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#8A7B76]">
+                            {c.date && <span>{c.date}</span>}
+                            {c.date && c.venue && <span>·</span>}
+                            {c.venue && <span>{c.venue}</span>}
+                          </div>
+                          {c.setupName && (
+                            <div className="text-[11px] text-[#4A3F3C] flex items-center gap-1.5 pt-0.5">
+                              <Sparkles className="size-3 text-[#E8546F]" />
+                              <span>{c.setupName}</span>
+                            </div>
+                          )}
+                          {c.items && c.items.length > 1 && (
+                            <div className="pl-4 pt-1 space-y-0.5">
+                              {c.items.map((it, idx) => (
+                                <div key={it.id || idx} className="flex justify-between text-[11px] text-[#6B5F5C]">
+                                  <span>{it.name}</span>
+                                  <span className="font-medium tabular-nums">{formatCurrency(it.price)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Paid Add-ons */}
+              {selectedBooking.paid_addons && selectedBooking.paid_addons.length > 0 && (
+                <div className="rounded-[18px] border border-[#E7DCD6] bg-white p-4.5 space-y-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#4A3F3C] flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-[#8A7B76]" />
+                    Paid Add-ons ({selectedBooking.paid_addons.length})
+                  </span>
+                  <div className="divide-y divide-[#F0EBE7]">
+                    {selectedBooking.paid_addons.map((a, i) => {
+                      const price =
+                        typeof a.price === "number" && a.price > 0
+                          ? a.price
+                          : (Number(a.quantity) || 1) * (Number(a.unitPrice) || 0);
+                      return (
+                        <div key={a.id || i} className="flex items-center justify-between py-2 text-xs">
+                          <div>
+                            <strong className="text-[#2B2320] font-semibold">{a.name}</strong>
+                            {a.quantity ? (
+                              <span className="text-[11px] text-[#8A7B76] ml-2">
+                                (Qty: {a.quantity}{a.unit ? ` ${a.unit}` : ""})
+                              </span>
+                            ) : null}
+                          </div>
+                          <span className="font-extrabold text-[#4A3F3C] tabular-nums">
+                            {formatCurrency(price)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Legacy Decoration Setups Included (when ceremonies not present) */}
+              {(!selectedBooking.ceremonies || selectedBooking.ceremonies.length === 0) &&
+                selectedBooking.decorations &&
+                selectedBooking.decorations.length > 0 && (
                 <div className="rounded-[18px] border border-[#E7DCD6] bg-white p-4.5 space-y-2.5">
                   <span className="text-xs font-bold uppercase tracking-wider text-[#4A3F3C] flex items-center gap-1.5">
                     <Sparkles className="size-3.5 text-[#8A7B76]" />
@@ -568,7 +659,7 @@ export function BookedClientsPage() {
                             <span className="text-[11px] text-[#8A7B76] ml-2">({d.type})</span>
                           </div>
                           <span className="font-extrabold text-[#4A3F3C] tabular-nums">
-                            ₹{itemPrice.toLocaleString()}
+                            {formatCurrency(itemPrice)}
                           </span>
                         </div>
                       );

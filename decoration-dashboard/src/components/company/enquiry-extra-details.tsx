@@ -21,10 +21,11 @@ import {
   getSetupsCacheVersion,
   loadStoredSetups,
   INITIAL_DECORATION_SETUPS,
+  parseDetailsFromDescription,
 } from "@/lib/decoration-setups";
 import { loadEnquiryPhotos } from "@/lib/enquiry-photos";
 import {
-  CURRENT_COMPANY_ID,
+  getCurrentCompanyId,
   isMyCompanyId,
   getCurrentCompanyName,
   getCompanyNameById,
@@ -37,6 +38,131 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+
+export interface UnifiedDecorationDetails {
+  title: string;
+  category: string;
+  description: string;
+  inclusions: string[];
+  detailRows: { label: string; value: string }[];
+  price: number;
+  priceFormatted: string;
+  priceUnit?: string | undefined;
+  coverPhoto: string | null;
+  galleryList: string[];
+  companyName: string;
+  isYours: boolean;
+  isOther: boolean;
+  isUnknown: boolean;
+}
+
+/**
+ * Requirement 3: Build Description, Inclusions list and Details rows
+ * with ONE function for every decoration, whoever owns it (my company, other company, unknown).
+ * Hides empty rows.
+ */
+export function buildUnifiedDecorationDetails(
+  item: EnquiryRequestedDecoration | null,
+): UnifiedDecorationDetails | null {
+  if (!item) return null;
+
+  const title = item.name || item.title || "Decoration Details";
+  const category = item.category?.trim() || "Decoration";
+  const description = item.description?.trim() || "";
+
+  // 1. Inclusions list (uses explicit inclusions or parses from description text as fallback)
+  let inclusions: string[] = [];
+  if (Array.isArray(item.inclusions) && item.inclusions.length > 0) {
+    inclusions = item.inclusions
+      .map((inc) => (typeof inc === "string" ? inc.trim() : ""))
+      .filter((inc) => inc.length > 0);
+  } else if (description) {
+    const parsed = parseDetailsFromDescription(description);
+    if (parsed.inclusions && parsed.inclusions.length > 0) {
+      inclusions = parsed.inclusions;
+    }
+  }
+
+  // 2. Details rows (Category, Style, Colours, Dimensions, Category-specific specs)
+  // Hide empty rows
+  const detailRows: { label: string; value: string }[] = [];
+  const addRow = (label: string, val?: string | null) => {
+    if (val && typeof val === "string" && val.trim().length > 0) {
+      detailRows.push({ label, value: val.trim() });
+    }
+  };
+
+  addRow("Category", category);
+  addRow("Style", item.style);
+  if (item.theme && item.theme.trim() !== item.style?.trim()) {
+    addRow("Theme", item.theme);
+  }
+  addRow("Colours", item.colours);
+  addRow("Dimensions / Size", item.dimensions || item.size);
+
+  const structureLabel =
+    category === "Entrance Gate"
+      ? "Arch / Structure"
+      : category === "Welcome Board"
+      ? "Material / Board"
+      : category === "Mandap"
+      ? "Mandap Frame"
+      : category === "Stage"
+      ? "Stage Structure"
+      : "Structure / Rigging";
+  addRow(structureLabel, item.structure);
+  addRow("Platform / Deck", item.platform);
+  addRow("Lighting", item.lighting);
+  addRow("Floral Arrangement", item.flowers);
+  addRow("Seating / Furniture", item.seating);
+  addRow("Personalization", item.customText);
+  addRow("Applicable Events", item.events);
+  addRow("Price Unit", item.priceUnit);
+
+  // 3. Pricing
+  const price = Number(item.listedPrice ?? item.price) || 0;
+  const priceFormatted = price > 0 ? `Rs. ${price.toLocaleString("en-IN")}` : "Custom quote";
+  const priceUnit = item.priceUnit?.trim();
+
+  // 4. Photos & gallery
+  const coverPhoto = item.photo || item.image || item.gallery?.[0] || null;
+  const rawGallery = Array.isArray(item.gallery) && item.gallery.length > 0
+    ? item.gallery
+    : (coverPhoto ? [coverPhoto] : []);
+  const galleryList = Array.from(
+    new Set(rawGallery.filter((url): url is string => typeof url === "string" && Boolean(url.trim())))
+  );
+
+  // 5. Ownership
+  const companyId = item.companyId || item.ownerCompanyId;
+  const isYours = Boolean(companyId && isMyCompanyId(companyId));
+  const isOther = Boolean(companyId && !isMyCompanyId(companyId));
+  const isUnknown = !companyId;
+  const companyName = isYours
+    ? getCurrentCompanyName()
+    : item.companyName && item.companyName !== "Company 1"
+    ? item.companyName
+    : companyId
+    ? getCompanyNameById(companyId)
+    : "Unknown";
+
+  return {
+    title,
+    category,
+    description,
+    inclusions,
+    detailRows,
+    price,
+    priceFormatted,
+    priceUnit,
+    coverPhoto,
+    galleryList,
+    companyName,
+    isYours,
+    isOther,
+    isUnknown,
+  };
+}
 
 /**
  * Shown inside an enquiry card on the Enquiries page:
@@ -78,7 +204,7 @@ function EnquiryExtraDetailsView({ enquiry }: { enquiry: EnquiryItem }) {
       const sharedRecord = getSharedPublicDecoration(decId, selectedDecoration);
 
       // Diagnostic logging as requested by Requirement 1:
-      const myCatalog = loadStoredSetups().filter((s) => s.companyId === CURRENT_COMPANY_ID);
+      const myCatalog = loadStoredSetups().filter((s) => s.companyId === getCurrentCompanyId());
       const allStored = loadStoredSetups();
       const inMyCatalog = myCatalog.some((s) => String(s.id).toLowerCase() === String(decId).toLowerCase() || (Array.isArray((s as any).aliases) && (s as any).aliases.includes(decId)));
       const inSharedCatalog = allStored.some((s) => String(s.id).toLowerCase() === String(decId).toLowerCase() || (Array.isArray((s as any).aliases) && (s as any).aliases.includes(decId)));
@@ -150,13 +276,18 @@ function EnquiryExtraDetailsView({ enquiry }: { enquiry: EnquiryItem }) {
     }
   }, [selectedDecoration]);
 
+  const details = useMemo(
+    () => buildUnifiedDecorationDetails(activeItem || selectedDecoration),
+    [activeItem, selectedDecoration]
+  );
+
   useEffect(() => {
-    if (activeItem) {
-      setActivePhotoUrl(activeItem.photo || activeItem.image || (activeItem.gallery?.[0]) || null);
+    if (details) {
+      setActivePhotoUrl(details.coverPhoto);
     } else {
       setActivePhotoUrl(null);
     }
-  }, [activeItem]);
+  }, [details]);
 
   const events = enquiry.events ?? [];
   const extraEvents = events.slice(1);
@@ -461,294 +592,219 @@ function EnquiryExtraDetailsView({ enquiry }: { enquiry: EnquiryItem }) {
       {/* ── Right-Side Drawer for Decoration Details ── */}
       <Sheet open={!!selectedDecoration} onOpenChange={(open) => !open && setSelectedDecoration(null)}>
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto p-6 bg-white space-y-5">
-          {(() => {
-            const item = activeItem || selectedDecoration;
-            if (!item) return null;
-
-            const selectedCompanyId = item.companyId || item.ownerCompanyId;
-            const selectedIsYours = Boolean(selectedCompanyId && isMyCompanyId(selectedCompanyId));
-            const selectedIsUnknown = !selectedCompanyId;
-            const selectedIsOther = Boolean(selectedCompanyId && !isMyCompanyId(selectedCompanyId));
-            const realOwnCompanyName = getCurrentCompanyName();
-            const selectedCompanyName = selectedIsYours
-              ? realOwnCompanyName
-              : (item.companyName && item.companyName !== "Company 1"
-                  ? item.companyName
-                  : (selectedCompanyId ? getCompanyNameById(selectedCompanyId) : "Unknown"));
-
-            // Build detail rows (only populated fields; hide empty ones)
-            const detailRows: { label: string; value: string }[] = [];
-            if (item.category?.trim()) {
-              detailRows.push({ label: "Category", value: item.category.trim() });
-            }
-            if (item.style?.trim()) {
-              detailRows.push({ label: "Style", value: item.style.trim() });
-            }
-            if (item.theme?.trim() && item.theme.trim() !== item.style?.trim()) {
-              detailRows.push({ label: "Theme", value: item.theme.trim() });
-            }
-            if (item.colours?.trim()) {
-              detailRows.push({ label: "Colours", value: item.colours.trim() });
-            }
-            const sizeVal = item.size?.trim() || item.dimensions?.trim();
-            if (sizeVal) {
-              detailRows.push({ label: "Dimensions / Size", value: sizeVal });
-            }
-            if (item.structure?.trim()) {
-              const label = item.category === "Entrance Gate"
-                ? "Arch / Structure"
-                : item.category === "Welcome Board"
-                ? "Material / Board"
-                : item.category === "Mandap"
-                ? "Mandap Frame"
-                : item.category === "Stage"
-                ? "Stage Structure"
-                : "Structure / Rigging";
-              detailRows.push({ label, value: item.structure.trim() });
-            }
-            if (item.platform?.trim()) {
-              detailRows.push({ label: "Platform / Deck", value: item.platform.trim() });
-            }
-            if (item.lighting?.trim()) {
-              detailRows.push({ label: "Lighting", value: item.lighting.trim() });
-            }
-            if (item.flowers?.trim()) {
-              detailRows.push({ label: "Floral Arrangement", value: item.flowers.trim() });
-            }
-            if (item.seating?.trim()) {
-              detailRows.push({ label: "Seating / Furniture", value: item.seating.trim() });
-            }
-            if (item.customText?.trim()) {
-              detailRows.push({ label: "Personalization", value: item.customText.trim() });
-            }
-            if (item.events?.trim()) {
-              detailRows.push({ label: "Applicable Events", value: item.events.trim() });
-            }
-            if (item.priceUnit?.trim()) {
-              detailRows.push({ label: "Price Unit", value: item.priceUnit.trim() });
-            }
-
-            const currentPhoto = activePhotoUrl || item.photo || item.image;
-            const galleryList = Array.isArray(item.gallery) && item.gallery.length > 0
-              ? item.gallery
-              : (currentPhoto ? [currentPhoto] : []);
-
-            return (
-              <>
-                <SheetHeader className="text-left space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="rounded-full bg-[#FFF0F3] border border-[#FFD0D9] text-[#E8546F] text-[10px] font-bold px-2.5 py-0.5 uppercase tracking-wider">
-                      {item.category || "Decoration"}
+          {details && (
+            <>
+              <SheetHeader className="text-left space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="rounded-full bg-[#FFF0F3] border border-[#FFD0D9] text-[#E8546F] text-[10px] font-bold px-2.5 py-0.5 uppercase tracking-wider">
+                    {details.category}
+                  </span>
+                  {details.isYours ? (
+                    <span className="rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold px-2.5 py-0.5 uppercase tracking-wider">
+                      Yours
                     </span>
-                    {selectedIsYours ? (
-                      <span className="rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold px-2.5 py-0.5 uppercase tracking-wider">
-                        Yours
-                      </span>
-                    ) : selectedIsUnknown ? (
-                      <span className="rounded-full bg-stone-100 border border-stone-300 text-stone-700 text-[10px] font-bold px-2.5 py-0.5 uppercase tracking-wider">
-                        Unknown
-                      </span>
-                    ) : (
-                      <span
-                        className="rounded-full bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-bold px-2.5 py-0.5 uppercase tracking-wider max-w-[200px] truncate"
-                        title={selectedCompanyName}
-                      >
-                        {selectedCompanyName}
-                      </span>
-                    )}
-                  </div>
-                  <SheetTitle className="font-display text-xl font-bold text-[#2B2320]">
-                    {item.name || item.title || "Decoration Details"}
-                  </SheetTitle>
-                  {isSnapshotFallback ? (
-                    <div className="rounded-md bg-stone-100 border border-stone-200/90 px-2.5 py-1 text-[11px] text-stone-600 italic">
-                      Showing the details saved when the client sent this.
-                    </div>
+                  ) : details.isUnknown ? (
+                    <span className="rounded-full bg-stone-100 border border-stone-300 text-stone-700 text-[10px] font-bold px-2.5 py-0.5 uppercase tracking-wider">
+                      Unknown
+                    </span>
                   ) : (
-                    <SheetDescription className="text-xs text-stone-500">
-                      {selectedIsOther
-                        ? `View-only reference from ${selectedCompanyName}`
-                        : selectedIsUnknown
-                        ? "View-only reference (unrecorded company)"
-                        : "Catalogue details for this enquiry selection"}
-                    </SheetDescription>
-                  )}
-                </SheetHeader>
-
-                {/* Photos Section: Large Photo + Thumbnails */}
-                <div className="space-y-2">
-                  <div className="w-full aspect-[4/3] overflow-hidden rounded-xl border border-stone-200 bg-stone-50 shadow-xs relative">
-                    {currentPhoto ? (
-                      <img
-                        src={currentPhoto}
-                        alt={item.name || item.title || "Decoration"}
-                        className={cn(
-                          "size-full object-cover transition-all duration-200",
-                          (selectedIsOther || selectedIsUnknown) && "select-none pointer-events-none"
-                        )}
-                        draggable={selectedIsYours}
-                        onContextMenu={(e) => (selectedIsOther || selectedIsUnknown) && e.preventDefault()}
-                      />
-                    ) : (
-                      <div className="size-full flex flex-col items-center justify-center text-stone-400 gap-1.5">
-                        <ImageIcon className="size-8 stroke-[1.5]" />
-                        <span className="text-xs">No preview photo</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Extra Photos Thumbnails */}
-                  {galleryList.length > 1 && (
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5">
-                      {galleryList.map((thumbUrl, idx) => {
-                        const isSelected = (activePhotoUrl || item.photo || item.image) === thumbUrl;
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setActivePhotoUrl(thumbUrl)}
-                            className={cn(
-                              "relative size-14 shrink-0 overflow-hidden rounded-lg border-2 transition-all cursor-pointer bg-stone-100",
-                              isSelected
-                                ? "border-[#E8546F] ring-2 ring-[#E8546F]/30"
-                                : "border-stone-200 hover:border-stone-300 opacity-70 hover:opacity-100"
-                            )}
-                            aria-label={`View photo ${idx + 1}`}
-                          >
-                            <img
-                              src={thumbUrl}
-                              alt={`${item.name || "Decoration"} ${idx + 1}`}
-                              className={cn(
-                                "size-full object-cover",
-                                (selectedIsOther || selectedIsUnknown) && "select-none pointer-events-none"
-                              )}
-                              draggable={selectedIsYours}
-                              onContextMenu={(e) => (selectedIsOther || selectedIsUnknown) && e.preventDefault()}
-                            />
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <span
+                      className="rounded-full bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-bold px-2.5 py-0.5 uppercase tracking-wider max-w-[200px] truncate"
+                      title={details.companyName}
+                    >
+                      {details.companyName}
+                    </span>
                   )}
                 </div>
+                <SheetTitle className="font-display text-xl font-bold text-[#2B2320]">
+                  {details.title}
+                </SheetTitle>
+                {isSnapshotFallback ? (
+                  <div className="rounded-md bg-stone-100 border border-stone-200/90 px-2.5 py-1 text-[11px] text-stone-600 italic">
+                    Showing the details saved when the client sent this.
+                  </div>
+                ) : (
+                  <SheetDescription className="text-xs text-stone-500">
+                    {details.isOther
+                      ? `View-only reference from ${details.companyName}`
+                      : details.isUnknown
+                      ? "View-only reference (unrecorded company)"
+                      : "Catalogue details for this enquiry selection"}
+                  </SheetDescription>
+                )}
+              </SheetHeader>
 
-                {/* Price & Owner section */}
-                <div className="rounded-xl border border-stone-200 bg-[#FAF9F8] p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                      Price
-                    </span>
-                    <div className="flex items-baseline gap-1 text-right">
-                      <span className="text-lg font-bold text-[#E8546F]">
-                        {Number(item.listedPrice ?? item.price) > 0
-                          ? `Rs. ${(Number(item.listedPrice ?? item.price)).toLocaleString("en-IN")}`
-                          : "Custom quote"}
-                      </span>
-                      {item.priceUnit && (
-                        <span className="text-xs font-medium text-stone-500">
-                          {item.priceUnit.startsWith("/") ? item.priceUnit : `/ ${item.priceUnit}`}
-                        </span>
+              {/* Photos Section: Large Photo + Thumbnails */}
+              <div className="space-y-2">
+                <div className="w-full aspect-[4/3] overflow-hidden rounded-xl border border-stone-200 bg-stone-50 shadow-xs relative">
+                  {(activePhotoUrl || details.coverPhoto) ? (
+                    <img
+                      src={activePhotoUrl || details.coverPhoto!}
+                      alt={details.title}
+                      className={cn(
+                        "size-full object-cover transition-all duration-200",
+                        (details.isOther || details.isUnknown) && "select-none pointer-events-none"
                       )}
-                    </div>
-                  </div>
-
-                  <div className="h-px bg-stone-200/80" />
-
-                  {/* Owner Section */}
-                  {selectedIsOther ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 space-y-1">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-900">
-                        <Building2 className="size-3.5 text-amber-600 shrink-0" />
-                        <span>Company: {selectedCompanyName}</span>
-                      </div>
-                      <p className="text-[11px] text-amber-800 leading-relaxed">
-                        View-only reference. Belongs to {selectedCompanyName}. No copying, downloading, or editing permitted.
-                      </p>
-                    </div>
-                  ) : selectedIsUnknown ? (
-                    <div className="rounded-lg border border-stone-200 bg-stone-50 p-3 space-y-1">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-stone-700">
-                        <Building2 className="size-3.5 text-stone-500 shrink-0" />
-                        <span>Company: Unknown</span>
-                      </div>
-                      <p className="text-[11px] text-stone-600 leading-relaxed">
-                        Older enquiry decoration with no company recorded. View-only reference.
-                      </p>
-                    </div>
+                      draggable={details.isYours}
+                      onContextMenu={(e) => (details.isOther || details.isUnknown) && e.preventDefault()}
+                    />
                   ) : (
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
-                        <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0" />
-                        <span>Company: {selectedCompanyName} (Yours)</span>
-                      </div>
-                      <Link
-                        to="/inventory"
-                        search={item.category ? { category: item.category } : {}}
-                        className="inline-flex items-center gap-1 text-xs font-bold text-[#E8546F] hover:underline cursor-pointer"
-                      >
-                        <span>Open in catalog</span>
-                        <ExternalLink className="size-3" />
-                      </Link>
+                    <div className="size-full flex flex-col items-center justify-center text-stone-400 gap-1.5">
+                      <ImageIcon className="size-8 stroke-[1.5]" />
+                      <span className="text-xs">No preview photo</span>
                     </div>
                   )}
                 </div>
 
-                {/* Description & Inclusions */}
-                <div className="rounded-xl border border-stone-200 bg-[#FAF9F8] p-4 space-y-3">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                    Description &amp; Inclusions
-                  </div>
-
-                  {/* Description */}
-                  {item.description?.trim() ? (
-                    <p className="text-xs text-stone-600 leading-relaxed whitespace-pre-line">
-                      {item.description.trim()}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-stone-400 italic">
-                      No description provided.
-                    </p>
-                  )}
-
-                  {/* Inclusions as a list */}
-                  {item.inclusions && item.inclusions.length > 0 && (
-                    <div className="pt-2 border-t border-stone-200/80 space-y-1.5">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
-                        Inclusions ({item.inclusions.length})
-                      </div>
-                      <ul className="space-y-1.5 pl-0.5">
-                        {item.inclusions.map((inc, i) => (
-                          <li key={i} className="text-xs text-stone-600 flex items-start gap-2">
-                            <span className="text-[#E8546F] font-bold text-xs leading-none mt-1 shrink-0">•</span>
-                            <span className="flex-1 leading-snug">{inc}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                {/* Details Section (Style, Colours, Size, etc. - hide empty rows) */}
-                {detailRows.length > 0 && (
-                  <div className="rounded-xl border border-stone-200 bg-[#FAF9F8] p-4 space-y-2.5">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                      Details
-                    </div>
-                    <div className="divide-y divide-stone-200/70 text-xs">
-                      {detailRows.map((row, idx) => (
-                        <div key={idx} className="flex items-center justify-between py-1.5 first:pt-0 last:pb-0 gap-3">
-                          <span className="text-stone-500 font-medium shrink-0">{row.label}</span>
-                          <span className="text-stone-800 font-semibold text-right truncate max-w-[220px]" title={row.value}>
-                            {row.value}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                {/* Extra Photos Thumbnails */}
+                {details.galleryList.length > 1 && (
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5">
+                    {details.galleryList.map((thumbUrl, idx) => {
+                      const isSelected = (activePhotoUrl || details.coverPhoto) === thumbUrl;
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setActivePhotoUrl(thumbUrl)}
+                          className={cn(
+                            "relative size-14 shrink-0 overflow-hidden rounded-lg border-2 transition-all cursor-pointer bg-stone-100",
+                            isSelected
+                              ? "border-[#E8546F] ring-2 ring-[#E8546F]/30"
+                              : "border-stone-200 hover:border-stone-300 opacity-70 hover:opacity-100"
+                          )}
+                          aria-label={`View photo ${idx + 1}`}
+                        >
+                          <img
+                            src={thumbUrl}
+                            alt={`${details.title} ${idx + 1}`}
+                            className={cn(
+                              "size-full object-cover",
+                              (details.isOther || details.isUnknown) && "select-none pointer-events-none"
+                            )}
+                            draggable={details.isYours}
+                            onContextMenu={(e) => (details.isOther || details.isUnknown) && e.preventDefault()}
+                          />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
-              </>
-            );
-          })()}
+              </div>
+
+              {/* Price & Owner section */}
+              <div className="rounded-xl border border-stone-200 bg-[#FAF9F8] p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                    Price
+                  </span>
+                  <div className="flex items-baseline gap-1 text-right">
+                    <span className="text-lg font-bold text-[#E8546F]">
+                      {details.priceFormatted}
+                    </span>
+                    {details.priceUnit && (
+                      <span className="text-xs font-medium text-stone-500">
+                        {details.priceUnit.startsWith("/") ? details.priceUnit : `/ ${details.priceUnit}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="h-px bg-stone-200/80" />
+
+                {/* Owner Section */}
+                {details.isOther ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-900">
+                      <Building2 className="size-3.5 text-amber-600 shrink-0" />
+                      <span>Company: {details.companyName}</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      View-only reference. Belongs to {details.companyName}. No copying, downloading, or editing permitted.
+                    </p>
+                  </div>
+                ) : details.isUnknown ? (
+                  <div className="rounded-lg border border-stone-200 bg-stone-50 p-3 space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-stone-700">
+                      <Building2 className="size-3.5 text-stone-500 shrink-0" />
+                      <span>Company: Unknown</span>
+                    </div>
+                    <p className="text-[11px] text-stone-600 leading-relaxed">
+                      Older enquiry decoration with no company recorded. View-only reference.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+                      <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0" />
+                      <span>Company: {details.companyName} (Yours)</span>
+                    </div>
+                    <Link
+                      to="/inventory"
+                      search={details.category ? { category: details.category } : {}}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-[#E8546F] hover:underline cursor-pointer"
+                    >
+                      <span>Open in catalog</span>
+                      <ExternalLink className="size-3" />
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Description & Inclusions */}
+              <div className="rounded-xl border border-stone-200 bg-[#FAF9F8] p-4 space-y-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                  Description &amp; Inclusions
+                </div>
+
+                {/* Description */}
+                {details.description ? (
+                  <p className="text-xs text-stone-600 leading-relaxed whitespace-pre-line">
+                    {details.description}
+                  </p>
+                ) : (
+                  <p className="text-xs text-stone-400 italic">
+                    No description provided.
+                  </p>
+                )}
+
+                {/* Inclusions as a list */}
+                {details.inclusions.length > 0 && (
+                  <div className="pt-2 border-t border-stone-200/80 space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                      Inclusions ({details.inclusions.length})
+                    </div>
+                    <ul className="space-y-1.5 pl-0.5">
+                      {details.inclusions.map((inc, i) => (
+                        <li key={i} className="text-xs text-stone-600 flex items-start gap-2">
+                          <span className="text-[#E8546F] font-bold text-xs leading-none mt-1 shrink-0">•</span>
+                          <span className="flex-1 leading-snug">{inc}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Details Section (Style, Colours, Size, etc. - hide empty rows) */}
+              {details.detailRows.length > 0 && (
+                <div className="rounded-xl border border-stone-200 bg-[#FAF9F8] p-4 space-y-2.5">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                    Details
+                  </div>
+                  <div className="divide-y divide-stone-200/70 text-xs">
+                    {details.detailRows.map((row, idx) => (
+                      <div key={idx} className="flex items-center justify-between py-1.5 first:pt-0 last:pb-0 gap-3">
+                        <span className="text-stone-500 font-medium shrink-0">{row.label}</span>
+                        <span className="text-stone-800 font-semibold text-right truncate max-w-[220px]" title={row.value}>
+                          {row.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </SheetContent>
       </Sheet>
     </div>

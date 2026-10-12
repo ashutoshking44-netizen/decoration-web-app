@@ -1,11 +1,13 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { EnquiriesTriagePage } from "@/components/company/enquiries-triage-page";
-import { loadProfile } from "@/lib/company-profile";
+import { getActiveCompanyId } from "@/lib/company-profile";
 
 export const Route = createFileRoute("/enquiries")({
   ssr: false,
+  validateSearch: (search: Record<string, unknown>): { stage?: string } =>
+    typeof search.stage === "string" ? { stage: search.stage } : {},
   beforeLoad: () => {
-    if (!loadProfile()) throw redirect({ to: "/setup" });
+    if (!getActiveCompanyId()) throw redirect({ to: "/companies" });
   },
   head: () => ({
     meta: [

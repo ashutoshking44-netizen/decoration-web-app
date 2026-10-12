@@ -16,6 +16,7 @@ import {
   ExternalLink,
   FileText,
   House,
+  LogOut,
   Lightbulb,
   Menu,
   MessageCircle,
@@ -51,9 +52,10 @@ import {
   type Permission,
   type UpcomingFunction,
 } from "@/lib/company-dashboard";
-import { useCompanyProfile } from "@/lib/company-profile";
+import { logoutCompany, useCompanyProfile } from "@/lib/company-profile";
 import { ShareEnquiryFormButton } from "./share-enquiry-form-button";
 import { useDecorationSetupsStore } from "@/lib/decoration-setups";
+import { formatCurrency, useBookedClientsStore } from "@/lib/clients";
 
 const navGroups: {
   label: string;
@@ -394,6 +396,23 @@ function Sidebar({
               <span>Close menu</span>
             </Button>
             <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "mb-2 w-full gap-2 text-xs text-destructive hover:text-destructive",
+                collapsed && "size-9 p-0",
+              )}
+              onClick={() => {
+                logoutCompany();
+                navigate({ to: "/companies" });
+              }}
+              aria-label="Log out"
+              title="Log out"
+            >
+              <LogOut className="size-3.5" />
+              {!collapsed && <span>Log out</span>}
+            </Button>
+            <Button
               variant="outline"
               size="sm"
               className={cn("hidden w-full gap-2 text-xs md:flex", collapsed && "size-9 p-0")}
@@ -587,7 +606,7 @@ function DashboardDecorationsCatalog({
                 <div className="mt-2 flex items-center justify-between pt-2 border-t border-border/40 text-xs">
                   <span className="text-[11px] text-muted-foreground">Estimated Setup</span>
                   <span className="font-semibold text-primary">
-                    ₹ {setup.total_price?.toLocaleString() || "Quote"}
+                    {setup.total_price ? formatCurrency(setup.total_price) : "Quote"}
                   </span>
                 </div>
               </div>
@@ -605,6 +624,14 @@ function ModuleCards({
   data: DashboardData;
   onAddDecoration?: (() => void) | undefined;
 }) {
+  const { clients } = useBookedClientsStore();
+  const { upcomingCount, pendingAmount } = useMemo(() => {
+    const live = clients.filter((c) => !c.deleted_at);
+    return {
+      upcomingCount: live.filter((c) => typeof c.days_to_event === "number" && c.days_to_event >= 0 && c.days_to_event <= 7).length,
+      pendingAmount: live.reduce((sum, c) => sum + (Number(c.balance_due) || 0), 0),
+    };
+  }, [clients]);
   return (
     <section
       aria-label="Dashboard summaries"
@@ -635,9 +662,11 @@ function ModuleCards({
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-2 text-muted-foreground">
               <CalendarDays className="size-3.5 shrink-0 text-primary" />
-              This weekend
+              Next 7 days
             </span>
-            <span className="font-semibold tabular-nums text-foreground">3 Events</span>
+            <span className="font-semibold tabular-nums text-foreground">
+              {upcomingCount} {upcomingCount === 1 ? "Event" : "Events"}
+            </span>
           </div>
           <div className="h-px bg-border/40" />
           <div className="flex items-center justify-between text-xs">
@@ -645,7 +674,7 @@ function ModuleCards({
               <CircleDollarSign className="size-3.5 shrink-0 text-muted-foreground" />
               Pending deposit
             </span>
-            <span className="font-semibold tabular-nums text-foreground">$14.2k</span>
+            <span className="font-semibold tabular-nums text-foreground">{formatCurrency(pendingAmount)}</span>
           </div>
         </div>
       </ModuleCard>

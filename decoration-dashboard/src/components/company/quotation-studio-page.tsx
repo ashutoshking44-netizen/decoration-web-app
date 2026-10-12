@@ -42,7 +42,7 @@ import {
   useDecorationSetupsStore,
   loadStoredSetups,
 } from "@/lib/decoration-setups";
-import { isMyCompanyId, CURRENT_COMPANY_ID, getCurrentCompanyName } from "@/lib/current-company";
+import { isMyCompanyId, getCurrentCompanyId, getCurrentCompanyName } from "@/lib/current-company";
 import {
   EVENT_LOCATION_OPTIONS,
   loadQuotationIntake,
@@ -54,8 +54,12 @@ import {
   parseEventDate,
   findClientById,
   upsertStoredBookedClient,
+  formatCurrency,
+  getCeremonySubtotal,
   type BookedClient,
   type ClientCeremonyItem,
+  type CeremonySetupItem,
+  type ClientPaidAddon,
 } from "@/lib/clients";
 import { loadStoredEnquiries } from "@/lib/enquiries";
 import { loadEnquiryPhotos } from "@/lib/enquiry-photos";
@@ -205,7 +209,7 @@ export function resolvePickedDecoration(
   const cat = (d.category as DecorationCategory) || "Stage";
   const price = Number(d.listedPrice ?? d.price) || 0;
   const photo = String(d.photo || d.image || d.imageUrl || "").trim() || undefined;
-  const compId = d.companyId || d.ownerCompanyId || (isMyCompanyId(d.companyId) ? CURRENT_COMPANY_ID : undefined);
+  const compId = d.companyId || d.ownerCompanyId || (isMyCompanyId(d.companyId) ? getCurrentCompanyId() : undefined);
   const size = d.size || d.dimensions;
   return {
     id: String(decId || `picked-${eventIdx}-${pickIdx}`),
@@ -277,6 +281,7 @@ export function splitEventDesignPicks(
       category: String(d.category || found?.category || "").trim(),
       image: pickImage(d) || found?.imageUrl || found?.gallery?.[0],
       companyName: d.companyName || d.ownerCompanyName || undefined,
+      raw: d,
     };
     (mine ? ours : references).push(pick);
   });
@@ -963,7 +968,7 @@ export function QuotationStudioPage({
   const [clientEmail, setClientEmail] = useState("");
 
   // ── Step 3: Multi-Ceremony Catalog Card Selection ──
-  const { setups: catalogSetups } = useDecorationSetupsStore();
+  const { setups: catalogSetups } = useDecorationSetupsStore({ allCompanies: true });
   const [multiCeremonyCards, setMultiCeremonyCards] = useState<Record<string, DecorationSetupItem[]>>({});
   const [catalogItemOverrides, setCatalogItemOverrides] = useState<
     Record<string, { unitPrice?: number; quantity?: number }>
@@ -1094,18 +1099,33 @@ export function QuotationStudioPage({
     }> = [];
 
     if (enq?.events && enq.events.length > 0) {
-      enq.events.forEach((ev) => {
+      enq.events.forEach((ev, i) => {
+        const evPicks =
+          ev.requested_decorations ??
+          (ev as any).decorations ??
+          (ev as any).picks ??
+          (i === 0 ? ((enq as any).requested_decorations ?? (enq as any).decorations ?? (enq as any).picks ?? []) : []);
         sourceEvents.push({
           name: ev.name,
           date_ad: ev.date_ad,
           date_bs: ev.date_bs,
           date_iso: ev.date_iso,
-          venue: ev.venue,
+          venue: ev.venue || enq.venue,
           note: ev.note,
           requirements: ev.requirements,
           category_details: ev.category_details,
-          picks: ev.requested_decorations ?? (ev as any).decorations ?? [],
+          picks: evPicks,
         });
+      });
+    } else if (enq) {
+      const topPicks = (enq as any).requested_decorations ?? (enq as any).decorations ?? (enq as any).picks ?? [];
+      sourceEvents.push({
+        name: enq.ceremony_type || "Wedding Ceremony",
+        date_ad: enq.date_ad,
+        date_bs: enq.date_bs,
+        venue: enq.venue,
+        note: enq.private_note,
+        picks: topPicks,
       });
     } else if (existingClient?.ceremonies && existingClient.ceremonies.length > 0) {
       existingClient.ceremonies.forEach((c) => {
@@ -1282,7 +1302,7 @@ export function QuotationStudioPage({
       enquiryId: enq?.id,
       clientName: enq?.client_name || existingClient?.client_name,
       orderType: enq?.order_type || "quotation-request",
-      CURRENT_COMPANY_ID,
+      currentCompanyId: getCurrentCompanyId(),
       currentCompanyName: getCurrentCompanyName(),
       catalogItemsCount: allCatalog.length,
     });
@@ -2058,8 +2078,15 @@ export function QuotationStudioPage({
       await new Promise((resolve) => setTimeout(resolve, 550));
 
       const now = new Date();
+      const existingClient = clientId
+        ? bookedClients.find((c) => c.id === clientId) || findClientById(clientId)
+        : clientName.trim()
+        ? bookedClients.find((c) => c.client_name.toLowerCase() === clientName.trim().toLowerCase())
+        : undefined;
+
       const finalClientId =
         clientId ||
+        existingClient?.id ||
         `bk-${clientName.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 16)}-${Math.floor(
           1000 + Math.random() * 9000
         )}`;
@@ -2069,35 +2096,171 @@ export function QuotationStudioPage({
           1000 + Math.random() * 9000
         )}`;
 
-      const existingClient = clientId
-        ? bookedClients.find((c) => c.id === clientId) || findClientById(clientId)
-        : undefined;
+      const linkedEnquiryId =
+        (clientId && clientId.startsWith("enq-"))
+          ? clientId
+          : (existingClient as any)?.enquiry_id || undefined;
+
+      const allCatalog = catalogSetups.length > 0 ? catalogSetups : loadStoredSetups();
 
       const formattedCeremonies: ClientCeremonyItem[] = eventSchedule.map((ev, idx) => {
-        const cards = getCeremonyCardsList(multiCeremonyCards, ev.id);
-        const primaryCard = cards[0];
-        const combinedPrice = cards.reduce((sum, c) => sum + Number(c.total_price || 45000), 0);
-        // Step 4 answers for this event's reference designs (only answered ones).
-        const matches = Object.values(designMatches[ev.id] ?? {}).filter((m) => availabilityOf(m));
-        return {
-          ...(matches.length > 0 ? { designMatches: matches } : {}),
-          id: ev.id || `ceremony-${idx + 1}`,
-          name: ev.name || `Ceremony ${idx + 1}`,
-          date: ev.dateBs || ev.dateAd || "Date TBD",
-          venue: ev.venueLocation || venueLocation || "Kathmandu Venue",
-          setupId: primaryCard?.id,
-          setupName: cards.length > 1 ? cards.map((c) => c.name).join(" + ") : primaryCard?.name,
-          setupPrice: combinedPrice || (primaryCard ? Number(primaryCard.total_price || 45000) : 0),
-          category: primaryCard?.category,
-          setupImage: primaryCard?.imageUrl,
-          items: cards.map((c) => ({
+        // Robust resolution of cards and picks for this event:
+        let cards = getCardsForEvent(multiCeremonyCards, ev.id, idx);
+        if (!cards || cards.length === 0) {
+          cards = getCeremonyCardsList(multiCeremonyCards, ev.id);
+        }
+        if (!cards || cards.length === 0) {
+          cards = getCeremonyCardsList(multiCeremonyCards, `event-${idx}`);
+        }
+        if (!cards || cards.length === 0) {
+          cards = getCeremonyCardsList(multiCeremonyCards, `c-${idx + 1}`);
+        }
+        if (!cards || cards.length === 0) {
+          const matchMap = designMatches[ev.id] ?? designMatches[`event-${idx}`] ?? designMatches[`c-${idx + 1}`];
+          const rawPicks =
+            enquiryEventPicks[ev.id] ??
+            enquiryEventPicks[`event-${idx}`] ??
+            enquiryEventPicks[`c-${idx + 1}`] ??
+            [];
+          if (rawPicks.length > 0) {
+            cards = buildEventCardsWithMatches(rawPicks, allCatalog, idx, matchMap);
+          }
+        }
+        if (!cards || cards.length === 0) {
+          const targetEnquiryId = linkedEnquiryId || clientId;
+          const enq = loadStoredEnquiries(true).find((e) =>
+            (targetEnquiryId && e.id === targetEnquiryId) ||
+            (clientName.trim() && e.client_name?.trim().toLowerCase() === clientName.trim().toLowerCase())
+          );
+          if (enq) {
+            const evPicks =
+              enq?.events?.[idx]?.requested_decorations ??
+              (enq?.events?.[idx] as any)?.decorations ??
+              (enq?.events?.[idx] as any)?.picks ??
+              (idx === 0 ? ((enq as any)?.requested_decorations ?? (enq as any)?.decorations ?? (enq as any)?.picks ?? []) : []);
+            if (evPicks.length > 0) {
+              const matchMap = designMatches[ev.id] ?? designMatches[`event-${idx}`] ?? designMatches[`c-${idx + 1}`];
+              cards = buildEventCardsWithMatches(evPicks, allCatalog, idx, matchMap);
+            }
+          }
+        }
+        if (!cards || cards.length === 0) {
+          if (existingClient?.ceremonies?.[idx]?.items?.length) {
+            cards = existingClient.ceremonies[idx]!.items!.map((it, pIdx) => ({
+              id: it.setupId || it.id || `item-${idx}-${pIdx}`,
+              name: it.name,
+              total_price: it.price,
+              category: (it.category as any) || "Stage",
+              imageUrl: it.imageUrl,
+              description: it.description,
+              sku: `PICK-${idx + 1}-${pIdx + 1}`,
+              createdAt: new Date().toISOString(),
+            }));
+          }
+        }
+        if ((!cards || cards.length === 0) && eventSchedule.length === 1 && setup) {
+          cards = [setup];
+        }
+        if (!cards) cards = [];
+
+        // Compute items using user overrides (quantity & unitPrice)
+        const itemsWithOverrides: CeremonySetupItem[] = cards.map((c) => {
+          const override =
+            catalogItemOverrides[`${ev.id}-${c.id}`] ||
+            catalogItemOverrides[`event-${idx}-${c.id}`] ||
+            catalogItemOverrides[`c-${idx + 1}-${c.id}`];
+          const qty = override?.quantity ?? 1;
+          const unitPrice =
+            override?.unitPrice ??
+            Number(
+              c.total_price ||
+                c.stageSpecs?.price ||
+                c.mandapSpecs?.price ||
+                c.backdropSpecs?.price ||
+                c.entranceGateSpecs?.price ||
+                45000
+            );
+          return {
             id: c.id,
             name: c.name,
-            price: Number(c.total_price || 45000),
+            price: qty * unitPrice,
+            unitPrice,
+            quantity: qty,
             setupId: c.id,
             category: c.category,
             imageUrl: c.imageUrl,
-          })),
+            photo: c.imageUrl,
+            description: c.description,
+            pending: false,
+          };
+        });
+
+        // Step 4 answers for this event's reference designs (only answered ones)
+        const matchMap = designMatches[ev.id] ?? designMatches[`event-${idx}`] ?? designMatches[`c-${idx + 1}`] ?? {};
+        const matches = Object.values(matchMap).filter((m) => availabilityOf(m));
+        const customRefItems: CeremonySetupItem[] = Object.values(matchMap)
+          .filter(isUploadedReference)
+          .map((a, rIdx) => ({
+            id: `${ev.id}-ref-${a.referenceKey || rIdx}`,
+            name: a.referenceName || "Custom Design Reference",
+            price: Number(a.rate) || 0,
+            unitPrice: Number(a.rate) || 0,
+            quantity: 1,
+            category: a.referenceCategory || "Custom Design",
+            imageUrl: a.screenshot,
+            photo: a.screenshot,
+            description: a.description || "Custom design reference agreed for setup",
+            pending: !a.rate || Number(a.rate) === 0,
+          }));
+
+        const allEventItems = [...itemsWithOverrides, ...customRefItems];
+        const cardsSubtotal = allEventItems.reduce((sum, it) => sum + it.price, 0);
+
+        // Event subtotal: base items + custom reference design rates
+        let ceremonySubtotal =
+          cardsSubtotal ||
+          (cards.length === 0 && eventSchedule.length === 1 ? Number(basePrice) || 0 : 0);
+
+        const primaryCard = cards[0];
+        const setupDisplayName =
+          cards.length > 1
+            ? cards.map((c) => c.name).join(" + ")
+            : primaryCard?.name || (allEventItems[0]?.name ?? ev.name);
+
+        if (allEventItems.length === 0 && (ceremonySubtotal > 0 || Number(basePrice) > 0 || setup || primaryCard)) {
+          const fallbackPrice = ceremonySubtotal || Number(basePrice) || (primaryCard ? Number(primaryCard.total_price) : 0) || 85000;
+          const fallbackName = setupDisplayName || setup?.name || primaryCard?.name || ev.name || "Wedding Decoration";
+          const fallbackImg = primaryCard?.imageUrl || setup?.imageUrl || "/gallery/wedding-1.jpg";
+          allEventItems.push({
+            id: primaryCard?.id || setup?.id || `item-${idx}-fallback`,
+            name: fallbackName,
+            price: fallbackPrice,
+            unitPrice: fallbackPrice,
+            quantity: 1,
+            setupId: primaryCard?.id || setup?.id || `setup-${idx}`,
+            category: primaryCard?.category || setup?.category || "Stage",
+            imageUrl: fallbackImg,
+            photo: fallbackImg,
+            description: primaryCard?.description || setup?.description || "Curated wedding decoration setup",
+            details: primaryCard?.description || setup?.description || "Curated wedding decoration setup",
+            pending: false,
+          });
+          ceremonySubtotal = fallbackPrice;
+        }
+
+        return {
+          ...(matches.length > 0 ? { designMatches: matches } : {}),
+          id: ev.id || `c-${idx + 1}`,
+          name: ev.name || `Ceremony ${idx + 1}`,
+          date: ev.dateBs || ev.dateAd || "Date TBD",
+          venue: ev.venueLocation || venueLocation || "Kathmandu Venue",
+          setupId: primaryCard?.id || allEventItems[0]?.setupId,
+          setupName: setupDisplayName,
+          setupPrice: ceremonySubtotal || (primaryCard ? Number(primaryCard.total_price || 45000) : 0),
+          category: primaryCard?.category || allEventItems[0]?.category,
+          setupImage: primaryCard?.imageUrl || allEventItems[0]?.imageUrl,
+          subtotal: ceremonySubtotal,
+          items: allEventItems,
         };
       });
 
@@ -2115,8 +2278,26 @@ export function QuotationStudioPage({
 
       const primaryVenue = venueLocation || eventSchedule[0]?.venueLocation || "Kathmandu Venue";
 
+      const clientAddons: ClientPaidAddon[] = items.map((it) => ({
+        id: it.id,
+        name: it.name,
+        quantity: it.quantity,
+        unit: it.unit,
+        unitPrice: it.unitPrice,
+        price: (it.quantity || 1) * (it.unitPrice || 0),
+        category: it.category,
+        description: it.description,
+      }));
+
+      const ceremoniesTotal = formattedCeremonies.reduce((sum, c) => sum + getCeremonySubtotal(c), 0);
+      const addOnsTotal = clientAddons.reduce((sum, a) => sum + (a.price || 0), 0);
+      const computedGrandTotal = Math.max(0, ceremoniesTotal + addOnsTotal - (Number(discountAmount) || 0));
+      const finalGrandTotal = computedGrandTotal > 0 ? computedGrandTotal : grandTotal;
+
       const savedClient: BookedClient = {
         id: finalClientId,
+        enquiry_id: linkedEnquiryId,
+        company_id: existingClient?.company_id || getCurrentCompanyId(),
         client_name: clientName.trim(),
         event_type: primaryEventType,
         event_date: primaryEventDate,
@@ -2125,10 +2306,10 @@ export function QuotationStudioPage({
         payment_status: existingClient?.payment_status || "balance_due",
         payment_note:
           existingClient?.payment_note ||
-          `Quotation finalized · Grand Total Rs. ${grandTotal.toLocaleString()}`,
-        total_amount: grandTotal,
+          `Quotation finalized · Grand Total ${formatCurrency(finalGrandTotal)}`,
+        total_amount: finalGrandTotal,
         paid_amount: existingClient?.paid_amount || 0,
-        balance_due: Math.max(0, grandTotal - (existingClient?.paid_amount || 0)),
+        balance_due: Math.max(0, finalGrandTotal - (existingClient?.paid_amount || 0)),
         days_to_event: existingClient?.days_to_event ?? 14,
         needs_attention: false,
         phone: clientPhone.trim() || whatsappNumber.trim(),
@@ -2137,19 +2318,14 @@ export function QuotationStudioPage({
         quotation_status: existingClient?.quotation_status || "Draft",
         proposal_id: finalProposalId,
         ceremonies: formattedCeremonies,
-        paid_addons: items.map((it) => ({
-          id: it.id,
-          name: it.name,
-          quantity: it.quantity,
-          unit: it.unit,
-          unitPrice: it.unitPrice,
-          price: (it.quantity || 1) * (it.unitPrice || 0),
-          category: it.category,
-          description: it.description,
-        })),
+        events: formattedCeremonies,
+        paid_addons: clientAddons,
+        addOns: clientAddons,
         notes: notes.trim(),
         payment_accounts: Object.entries(paymentRoles).map(([id, role]) => ({ id, role })),
       };
+
+      console.log("[Quotation Studio Finish] Saved quotation client:", savedClient);
 
       // Persist to store
       upsertStoredBookedClient(savedClient);
@@ -2176,10 +2352,8 @@ export function QuotationStudioPage({
       if (onExit) {
         onExit();
       } else {
-        navigate({
-          to: "/booked-clients",
-          search: { client: savedClient.id, view: "table" } as any,
-        });
+        // After finishing, go to Enquiries & Quotations → "Quotations Made".
+        navigate({ to: "/enquiries", search: { stage: "quotations_made" } as any });
       }
     } catch (err: any) {
       console.error("Failed to finish quotation:", err);
@@ -2336,48 +2510,12 @@ export function QuotationStudioPage({
           .join("\n\n")
       : `*${setupName}* (${category})\nDimensions: ${getSetupDimensions(setup)}`;
 
-    const message = `🌸 *OFFICIAL MULTI-CEREMONY DECORATION PROPOSAL* 🌸
-*${companyName.toUpperCase()}*
-━━━━━━━━━━━━━━━━━━━━━━
-*Proposal Ref:* ${quotationNumber}
-*Date:* ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+    const eventCount = Math.max(1, eventSchedule.length);
+    const message = `Hi ${clientName.trim() || "there"}, 👋
 
-👤 *Prepared For:* ${clientName || "Valued Client"}
-📞 *Contact:* ${clientPhone || whatsappNumber}
-📅 *Event Journey:* ${eventSchedule.length} Booked Ceremonies
+Thank you for reaching out to ${companyName}. Your quotation for ${eventCount} event${eventCount > 1 ? "s" : ""} is ready.
 
-━━━━━━━━━━━━━━━━━━━━━━
-💍 *CEREMONY ITINERARY & SETUPS:*
-━━━━━━━━━━━━━━━━━━━━━━
-${ceremonyDetails}
-
-${floralSpec.hasFlowers && !hasMultiCards ? `🌸 *Floral Styling:* ${floralSpec.summary} [Included in Base Setup]\n` : ""}📋 *INVESTMENT BREAKDOWN:*
-• Base Multi-Ceremony Setup: Rs. ${basePrice.toLocaleString()}
-${items
-  .map(
-    (it) =>
-      `• [Add-On] ${it.name} (${it.quantity} ${it.unit}): Rs. ${(
-        it.quantity * it.unitPrice
-      ).toLocaleString()}`
-  )
-  .join("\n")}
-━━━━━━━━━━━━━━━━━━━━━━
-🏷️ *Subtotal:* Rs. ${subtotalBeforeDiscount.toLocaleString()}
-${discountAmount > 0 ? `🎁 *Special Courtesy Discount:* -Rs. ${discountAmount.toLocaleString()}\n` : ""}💎 *GRAND TOTAL:* Rs. ${grandTotal.toLocaleString()}
-━━━━━━━━━━━━━━━━━━━━━━
-
-🔗 *VIEW LIVE INTERACTIVE PROPOSAL:*
-${trackingUrl}
-_(Includes high-res moodboards, setup dimensions, floral recipes & booking breakdown)_
-
-📝 *Terms & Inclusions:*
-• 50% advance booking deposit required to lock dates.
-• Balance due prior to on-site dispatch.
-• Includes installation, floral design styling, crew & post-event teardown.
-
-📞 *Questions? Contact us at:*
-${companyPhone} | ${profile?.email || "events@decorportal.com"}
-Thank you for letting us make your milestone unforgettable!`;
+View your quotation here: ${trackingUrl}`;
 
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     if (setup?.id) recordSetupQuotation(setup.id);
@@ -3320,10 +3458,12 @@ Valid for 14 days.`;
                         (oldId && prev[oldId]?.length ? prev[oldId] : null) ??
                         (prev[ev.id]?.length ? prev[ev.id] : null) ??
                         (prev[`event-${idx}`]?.length ? prev[`event-${idx}`] : null) ??
+                        (prev[`c-${idx + 1}`]?.length ? prev[`c-${idx + 1}`] : null) ??
                         [];
                       if (cards.length > 0) {
                         next[ev.id] = cards;
                         next[`event-${idx}`] = cards;
+                        next[`c-${idx + 1}`] = cards;
                       }
                     });
                     return next;
@@ -4246,7 +4386,18 @@ Valid for 14 days.`;
           ceremonies: eventSchedule.map((ev) => {
             const cards = getCeremonyCardsList(multiCeremonyCards, ev.id);
             const primaryCard = cards[0];
-            const combinedPrice = cards.reduce((sum, c) => sum + Number(c.total_price || 45000), 0);
+            const combinedPrice = cards.reduce((sum, c) => {
+              const override = catalogItemOverrides[`${ev.id}-${c.id}`];
+              const qty = override?.quantity ?? 1;
+              const unitPrice = override?.unitPrice ?? Number(c.total_price || 45000);
+              return sum + qty * unitPrice;
+            }, 0);
+            const matchesSubtotal = Object.values(designMatches[ev.id] ?? {})
+              .filter(isUploadedReference)
+              .reduce((sum, a) => sum + (Number(a.rate) || 0), 0);
+            const ceremonySubtotal =
+              combinedPrice + matchesSubtotal ||
+              (cards.length === 0 && eventSchedule.length === 1 ? Number(basePrice) || 0 : 0);
             return {
               id: ev.id,
               name: ev.name,
@@ -4254,7 +4405,8 @@ Valid for 14 days.`;
               venue: ev.venueLocation,
               setupId: primaryCard?.id,
               setupName: cards.length > 1 ? cards.map((c) => c.name).join(" + ") : primaryCard?.name,
-              setupPrice: combinedPrice || (primaryCard ? Number(primaryCard.total_price || 45000) : 0),
+              setupPrice: ceremonySubtotal || combinedPrice || (primaryCard ? Number(primaryCard.total_price || 45000) : 0),
+              subtotal: ceremonySubtotal,
               category: primaryCard?.category,
               setupImage: primaryCard?.imageUrl,
             };

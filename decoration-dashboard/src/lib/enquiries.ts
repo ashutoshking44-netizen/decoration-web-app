@@ -1,6 +1,6 @@
-import { useState, useEffect, useSyncExternalStore } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { type BookedClient, type ClientCeremonyItem, upsertStoredBookedClient } from "./clients";
+import { type BookedClient, type ClientCeremonyItem, upsertStoredBookedClient, ceremoniesFromEnquiry } from "./clients";
 import { upsertEnquiryInSupabase } from "./supabase-service";
 import {
   getEnquiryLoadState,
@@ -9,49 +9,14 @@ import {
   subscribeEnquiryLoadState,
 } from "./enquiry-sync";
 import { getCompanyNameById } from "./current-company";
+import { enquiryBelongsToCurrentCompany } from "./company-scope";
+
+export { enquiryBelongsToCurrentCompany };
 import { enquiryRepository, ENQUIRY_STORAGE_ERROR_EVENT, type StorageErrorDetail } from "./enquiry-repository";
 import { INITIAL_ENQUIRIES } from "./enquiries-sample-data";
+import { parseDetailsFromDescription } from "./decoration-setups";
 
-/**
- * Ceremonies for a quotation made from a website enquiry, carrying the decorations the
- * client already picked (so the quotation preview isn't empty). Returns null when the
- * enquiry has no picked decorations, so callers keep their usual behaviour.
- */
-export function ceremoniesFromEnquiry(enq: {
-  events?: EnquiryEvent[] | undefined;
-  ceremony_type: string;
-  date_bs: string;
-  date_ad: string;
-  venue: string;
-}): ClientCeremonyItem[] | null {
-  const events = enq.events ?? [];
-  if (!events.some((e) => ((e.requested_decorations?.length ?? (e as any).decorations?.length ?? 0) > 0))) return null;
-  return events.map((ev, i) => {
-    const date = ev.date_bs ? (ev.date_ad ? `${ev.date_bs} · ${ev.date_ad}` : ev.date_bs) : ev.date_ad;
-    const picks = ev.requested_decorations ?? (ev as any).decorations ?? [];
-    const firstPick = picks[0];
-    return {
-      id: `c-${i + 1}`,
-      name: ev.name,
-      date,
-      venue: ev.venue,
-      setupId: firstPick ? String(firstPick.decorationId || firstPick.id || "") : undefined,
-      setupName: firstPick ? String(firstPick.name || firstPick.title || "Decoration") : undefined,
-      setupPrice: firstPick ? Number(firstPick.listedPrice ?? firstPick.price) || 0 : undefined,
-      setupImage: firstPick ? String(firstPick.photo || firstPick.image || firstPick.imageUrl || "") : undefined,
-      category: firstPick?.category || "Stage",
-      items: picks.map((d: any) => ({
-        id: String(d.id || d.decorationId || ""),
-        name: d.title || d.name || "Decoration",
-        price: Number(d.listedPrice ?? d.price) || 0,
-        setupId: String(d.decorationId || d.id || ""),
-        category: d.category || "Stage",
-        ...(d.image || d.imageUrl || d.photo ? { imageUrl: d.image || d.imageUrl || d.photo } : {}),
-        pending: !(Number(d.listedPrice ?? d.price) > 0),
-      })),
-    };
-  });
-}
+export { ceremoniesFromEnquiry } from "./clients";
 
 export type EnquirySource = "Instagram" | "Website" | "Facebook" | "Referral" | "Walk-in" | "client_panel";
 
@@ -246,11 +211,23 @@ export function buildDecorationSnapshot(dec: any, catalogFallback?: any): Enquir
     size = fallback.stageSpecs?.dimensions || primary.stageSpecs?.dimensions;
   }
 
+  // Fallback: parse description text as last resort if fields are missing
+  const parsedDesc = parseDetailsFromDescription(description);
+  if (!inclusions && parsedDesc.inclusions?.length) {
+    inclusions = parsedDesc.inclusions;
+  }
+  if (!style && parsedDesc.style) {
+    style = parsedDesc.style;
+  }
+  if (!size && parsedDesc.dimensions) {
+    size = parsedDesc.dimensions;
+  }
+
   // Category-specific details
-  const structure = (fallback.structure?.trim() || primary.structure?.trim()) || undefined;
-  const platform = (fallback.platform?.trim() || primary.platform?.trim()) || undefined;
-  const lighting = (fallback.lighting?.trim() || primary.lighting?.trim()) || undefined;
-  const flowers = (fallback.flowers?.trim() || primary.flowers?.trim()) || undefined;
+  const structure = (fallback.structure?.trim() || primary.structure?.trim() || parsedDesc.structure) || undefined;
+  const platform = (fallback.platform?.trim() || primary.platform?.trim() || parsedDesc.platform) || undefined;
+  const lighting = (fallback.lighting?.trim() || primary.lighting?.trim() || parsedDesc.lighting) || undefined;
+  const flowers = (fallback.flowers?.trim() || primary.flowers?.trim() || parsedDesc.flowers) || undefined;
   const seating = (fallback.seating?.trim() || primary.seating?.trim()) || undefined;
   const customText = (fallback.customText?.trim() || primary.customText?.trim()) || undefined;
   const events = (fallback.events?.trim() || primary.events?.trim()) || undefined;
@@ -341,6 +318,8 @@ export interface EnquiryItem {
   client_name: string;
   phone: string;
   whatsapp_number?: string | undefined;
+  whatsappNumber?: string | undefined;
+  whatsappSameAsPhone?: boolean | undefined;
   email?: string | undefined;
   location: string; // e.g. "Kathmandu · Inside Kathmandu"
   source: EnquirySource;
@@ -446,7 +425,8 @@ export function saveStoredEnquiries(enquiries: EnquiryItem[]): boolean {
 }
 
 export function useEnquiriesStore() {
-  const [enquiries, setEnquiries] = useState<EnquiryItem[]>(() => enquiryRepository.getAll());
+  const [allEnquiries, setEnquiries] = useState<EnquiryItem[]>(() => enquiryRepository.getAll());
+  const enquiries = useMemo(() => allEnquiries.filter(enquiryBelongsToCurrentCompany), [allEnquiries]);
   const loadState = useSyncExternalStore(subscribeEnquiryLoadState, getEnquiryLoadState, getEnquiryLoadState);
   // True once the first Supabase load has finished, successfully or not.
   const isLoaded = loadState.status === "ready" || loadState.status === "error";

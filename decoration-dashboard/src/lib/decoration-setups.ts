@@ -1,6 +1,6 @@
-import { fetchDecorationsFromSupabase, fetchDecorationByIdFromSupabase, upsertDecorationInSupabase, deleteDecorationFromSupabase, subscribeToDecorationsRealtime } from "./supabase-service";
-import { useState, useEffect } from "react";
-import { getCurrentCompanyId, getCompanyNameById, DEFAULT_COMPANY_ID } from "./current-company";
+import { fetchDecorationsFromSupabase, fetchDecorationByIdFromSupabase, upsertDecorationInSupabase, deleteDecorationFromSupabase, subscribeToDecorationsRealtime, hasInlineImages, moveDecorationImagesToStorage } from "./supabase-service";
+import { useState, useEffect, useMemo } from "react";
+import { getCurrentCompanyId, getCompanyNameById, isMyCompanyId, DEFAULT_COMPANY_ID } from "./current-company";
 
 export type DecorationCategory = "Mandap" | "Entrance Gate" | "Welcome Board" | "Backdrop" | "Stage";
 
@@ -403,194 +403,7 @@ export const FLOWER_PRESET_COLOURS = [
   { name: "Mixed", hex: "#E0713F" },
 ];
 
-export const INITIAL_DECORATION_SETUPS: DecorationSetupItem[] = [
-  {
-    id: "dec-c1-mandap",
-    sku: "MAN-ROYAL-01",
-    name: "Royal Carved Wooden Mandap",
-    category: "Mandap",
-    companyId: "company-1",
-    companyName: "Company 1",
-    description: "4-pillar handcrafted traditional carved mandap with natural marigold and rose garlands, warm chandeliers, and satin drapes.",
-    imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
-    gallery: [
-      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=800&q=80",
-    ],
-    status: "Live",
-    total_price: 85000,
-    createdAt: new Date().toISOString(),
-    applicable_events: ["Wedding"],
-    specifications: {
-      structure_type: "4-Pillar Traditional Carved Mandap",
-      main_structure: "4-Pillar Traditional Carved Mandap",
-      setup_styles: ["Traditional Royal", "Temple Floral"],
-      dimensions: { width_ft: 16, height_ft: 12 },
-      floral_tag: "with_flowers",
-      flowers_used: true,
-      flowers: [
-        { name: "Marigold", colour: "Yellow", type: "natural" },
-        { name: "Rose", colour: "Red", type: "natural" },
-      ],
-      platforms_used: true,
-      platform_shape: "Octagonal Sacred Mandap Deck",
-      platform_colour: "Maroon",
-      platform_height: 1,
-      lighting_used: true,
-      lighting: [
-        { type: "Warm Chandeliers", quantity: 2, unit: "piece" },
-        { type: "Warm Fairy String Lights", quantity: 6, unit: "piece" },
-      ],
-      furniture_used: true,
-      furniture_details: "2 Royal Carved Wooden Chairs & 4 Bajot low seats",
-    },
-  },
-  {
-    id: "dec-c2-stage",
-    sku: "STG-LUXE-02",
-    name: "Luxe Floral Grand Reception Stage",
-    category: "Stage",
-    companyId: "company-2",
-    companyName: "Royal Orchid Events",
-    description: "Full luxe floral backdrop wall with pastel peonies, ambient fairy waterfall strings, and a raised velvet carpeted deck.",
-    imageUrl: "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80",
-    gallery: [
-      "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1520854221256-17451cc331bf?auto=format&fit=crop&w=800&q=80",
-    ],
-    status: "Live",
-    total_price: 65000,
-    createdAt: new Date().toISOString(),
-    applicable_events: ["Reception", "Wedding"],
-    specifications: {
-      structure_type: "Grand Reception Stage",
-      main_structure: "Grand Reception Stage",
-      setup_styles: ["Modern Luxe", "Pastel Romance"],
-      dimensions: { width_ft: 20, height_ft: 12 },
-      floral_tag: "with_flowers",
-      flowers_used: true,
-      flowers: [
-        { name: "Peonies & Hydrangeas", colour: "Blush Pink & Ivory", type: "mixed" },
-      ],
-      platforms_used: true,
-      platform_shape: "Carpeted Stage Platform",
-      platform_colour: "White",
-      platform_height: 1.5,
-      lighting_used: true,
-      lighting: [
-        { type: "LED Uplighting (RGB Par Cans)", quantity: 4, unit: "piece" },
-        { type: "Neon Ambient Flex Strips", quantity: 2, unit: "piece" },
-      ],
-    },
-  },
-  {
-    id: "dec-c2-fairy-lights-entrance",
-    sku: "ENT-CRYSTAL-03",
-    aliases: ["dec-c2-fairy-lights", "crystal-fairy-lights-entrance", "crystal-fairy-lights"],
-    name: "Crystal Fairy Lights Entrance",
-    category: "Entrance Gate",
-    companyId: "company-2",
-    companyName: "Royal Orchid Events",
-    description: "Grand entrance gateway with heavy-duty aluminum truss structure, cascading crystal chandeliers, and warm white fairy string light curtains for an enchanting guest welcome.",
-    imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
-    gallery: [
-      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80",
-    ],
-    status: "Live",
-    total_price: 45000,
-    priceUnit: "per setup",
-    createdAt: new Date().toISOString(),
-    applicable_events: ["Wedding", "Reception", "Sangeet"],
-    entranceGateSpecs: {
-      structureType: "Heavy-duty Aluminum Truss Structure",
-      compatibleEvents: ["Wedding", "Reception", "Sangeet"],
-      floralUsage: false,
-      pricingType: "Fixed Price",
-      price: 45000,
-    },
-    specifications: {
-      structure_type: "Heavy-duty Aluminum Truss Structure",
-      main_structure: "Heavy-duty Aluminum Truss Structure",
-      setup_styles: ["Glamour Crystal", "Warm Ambient"],
-      dimensions: { width_ft: 20, height_ft: 10 },
-      floral_tag: "structure_only",
-      flowers_used: false,
-      flowers: [],
-      lighting_used: true,
-      lighting: [
-        { type: "Crystal Chandeliers", quantity: 3, unit: "piece" },
-        { type: "Warm Fairy String Lights", quantity: 12, unit: "piece" },
-        { type: "Amber LED Uplighting", quantity: 4, unit: "piece" },
-      ],
-      price_unit: "per setup",
-      color_theme: ["Warm White", "Crystal Gold"],
-      applicable_events: ["Wedding", "Reception", "Sangeet"],
-    },
-    inclusions: [
-      "Heavy-duty Aluminum Truss Arch Gateway Frame (20 × 10 ft)",
-      "3 Tiered Cascading Crystal Glass Chandeliers",
-      "Warm White LED Fairy String Light Waterfall Curtains (12 Drops)",
-      "4 Amber LED Par Can Uplights for Atmospheric Glow",
-      "Ivory Sheer Drapes & Silk Ribbon Tie-backs",
-    ],
-  },
-  {
-    id: "dec-c2-fairy-lights",
-    sku: "LGT-CRYSTAL-03",
-    aliases: ["dec-c2-fairy-lights-entrance", "crystal-fairy-lights"],
-    name: "Crystal Fairy Lights",
-    category: "Entrance Gate",
-    companyId: "company-2",
-    companyName: "Royal Orchid Events",
-    description: "Grand entrance gateway with heavy-duty aluminum truss structure, cascading crystal chandeliers, and warm white fairy string light curtains for an enchanting guest welcome.",
-    imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
-    gallery: [
-      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80",
-    ],
-    status: "Live",
-    total_price: 45000,
-    priceUnit: "per setup",
-    createdAt: new Date().toISOString(),
-    applicable_events: ["Wedding", "Reception", "Sangeet"],
-    entranceGateSpecs: {
-      structureType: "Heavy-duty Aluminum Truss Structure",
-      compatibleEvents: ["Wedding", "Reception", "Sangeet"],
-      floralUsage: false,
-      pricingType: "Fixed Price",
-      price: 45000,
-    },
-    specifications: {
-      structure_type: "Heavy-duty Aluminum Truss Structure",
-      main_structure: "Heavy-duty Aluminum Truss Structure",
-      setup_styles: ["Glamour Crystal", "Warm Ambient"],
-      dimensions: { width_ft: 20, height_ft: 10 },
-      floral_tag: "structure_only",
-      flowers_used: false,
-      flowers: [],
-      lighting_used: true,
-      lighting: [
-        { type: "Crystal Chandeliers", quantity: 3, unit: "piece" },
-        { type: "Warm Fairy String Lights", quantity: 12, unit: "piece" },
-        { type: "Amber LED Uplighting", quantity: 4, unit: "piece" },
-      ],
-      price_unit: "per setup",
-      color_theme: ["Warm White", "Crystal Gold"],
-      applicable_events: ["Wedding", "Reception", "Sangeet"],
-    },
-    inclusions: [
-      "Heavy-duty Aluminum Truss Arch Gateway Frame (20 × 10 ft)",
-      "3 Tiered Cascading Crystal Glass Chandeliers",
-      "Warm White LED Fairy String Light Waterfall Curtains (12 Drops)",
-      "4 Amber LED Par Can Uplights for Atmospheric Glow",
-      "Ivory Sheer Drapes & Silk Ribbon Tie-backs",
-    ],
-  },
-];
+export const INITIAL_DECORATION_SETUPS: DecorationSetupItem[] = [];
 
 const DUMMY_SETUP_IDS = new Set([
   "setup-gate-1",
@@ -808,6 +621,80 @@ export interface PublicDecorationRecord {
   stageSpecs?: StageSpecs | undefined;
 }
 
+export interface ParsedDescriptionDetails {
+  dimensions?: string | undefined;
+  structure?: string | undefined;
+  platform?: string | undefined;
+  lighting?: string | undefined;
+  flowers?: string | undefined;
+  style?: string | undefined;
+  colours?: string | undefined;
+  inclusions?: string[] | undefined;
+}
+
+export function parseDetailsFromDescription(desc?: string | null): ParsedDescriptionDetails {
+  if (!desc || typeof desc !== "string") return {};
+  const text = desc.trim();
+  if (!text) return {};
+
+  const out: ParsedDescriptionDetails = {};
+
+  // Dimensions / Size: "Dimensions: 24 × 14 ft"
+  const dimMatch = /(?:Dimensions|Size):\s*([0-9]+(?:\.[0-9]+)?\s*[×xX*]\s*[0-9]+(?:\.[0-9]+)?\s*(?:ft|feet)?)/i.exec(text);
+  if (dimMatch && dimMatch[1]) out.dimensions = dimMatch[1].trim();
+
+  // Platform: "Platform: Red Carpet Royal Stage"
+  const platMatch = /Platform:\s*([^.\n]+)/i.exec(text);
+  if (platMatch && platMatch[1]) {
+    const val = platMatch[1].trim();
+    if (!/^no\b|^none\b/i.test(val)) out.platform = val;
+  }
+
+  // Lighting: "Lighting: Warm Spotlights (1 piece)"
+  const lightMatch = /Lighting:\s*([^.\n]+)/i.exec(text);
+  if (lightMatch && lightMatch[1]) {
+    const val = lightMatch[1].trim();
+    if (!/^no\b|^none\b/i.test(val)) out.lighting = val;
+  }
+
+  // Floral: "Floral: With Flowers"
+  const floralMatch = /Floral:\s*([^.\n]+)/i.exec(text);
+  if (floralMatch && floralMatch[1]) {
+    const val = floralMatch[1].trim();
+    if (!/^no\b|^none\b/i.test(val)) out.flowers = val;
+  }
+
+  // Structure & flowers from first phrase
+  const firstSentence = text.split(/\.|\n/)[0]?.trim();
+  if (firstSentence) {
+    if (firstSentence.toLowerCase().includes(" with ")) {
+      const parts = firstSentence.split(/\s+with\s+/i);
+      if (parts[0]?.trim()) out.structure = parts[0].trim();
+      if (!out.flowers && parts[1]?.trim()) out.flowers = parts[1].trim();
+    } else if (firstSentence.includes("(") && !firstSentence.toLowerCase().startsWith("dimensions")) {
+      const pMatch = /^([^(]+)\(([^)]+)\)/.exec(firstSentence);
+      if (pMatch && pMatch[1] && pMatch[2]) {
+        out.structure = pMatch[1].trim();
+        out.style = pMatch[2].trim();
+      } else {
+        out.structure = firstSentence;
+      }
+    } else if (firstSentence.length < 80 && !firstSentence.toLowerCase().startsWith("dimensions")) {
+      out.structure = firstSentence;
+    }
+  }
+
+  // Inclusions synthesis from parsed items
+  const inc: string[] = [];
+  if (out.structure) inc.push(`Structure: ${out.structure}`);
+  if (out.flowers) inc.push(`Floral Work: ${out.flowers}`);
+  if (out.platform) inc.push(`Platform: ${out.platform}`);
+  if (out.lighting) inc.push(`Lighting: ${out.lighting}`);
+  if (inc.length > 0) out.inclusions = inc;
+
+  return out;
+}
+
 /**
  * Builds public inclusions and category-specific fields for EVERY decoration category
  * (Stage, Entrance Gate, Mandap, Welcome Board, Backdrop, Table, Floral, Lighting, etc.)
@@ -896,7 +783,14 @@ export function extractPublicCategoryDetails(found: any) {
     events = evList.join(", ");
   }
 
-  // If inclusions was not explicitly given, synthesize from the extracted category specs
+  // Description parsing fallback for older/sparse records
+  const parsedDesc = parseDetailsFromDescription(found.description);
+  if (!structure && parsedDesc.structure) structure = parsedDesc.structure;
+  if (!flowers && parsedDesc.flowers) flowers = parsedDesc.flowers;
+  if (!platform && parsedDesc.platform) platform = parsedDesc.platform;
+  if (!lighting && parsedDesc.lighting) lighting = parsedDesc.lighting;
+
+  // If inclusions was not explicitly given, synthesize from the extracted category specs or parsed description
   if (inclusions.length === 0) {
     if (structure) inclusions.push(`Structure / Frame: ${structure}`);
     if (flowers) inclusions.push(`Floral Work: ${flowers}`);
@@ -904,6 +798,9 @@ export function extractPublicCategoryDetails(found: any) {
     if (lighting) inclusions.push(`Lighting: ${lighting}`);
     if (seating) inclusions.push(`Seating / Furniture: ${seating}`);
     if (customText) inclusions.push(`Personalization: ${customText}`);
+    if (inclusions.length === 0 && parsedDesc.inclusions?.length) {
+      inclusions.push(...parsedDesc.inclusions);
+    }
   }
 
   return {
@@ -977,6 +874,14 @@ function lookupSharedPublicDecoration(
       return true;
     }
 
+    // Grand Royal Stage cross-id matching
+    if (
+      (targetId === "dummy-royal-orchid-stage" || targetId === "9101" || targetId === "grand-royal-stage" || targetId === "dec-c2-grand-royal-stage") &&
+      (sId === "dummy-royal-orchid-stage" || sId === "9101" || sSku === "stg-royal-9101" || sName === "grand royal stage")
+    ) {
+      return true;
+    }
+
     // Cross-match fairy lights IDs and variations
     if (
       (targetId === "dec-c2-fairy-lights" && sId === "dec-c2-fairy-lights-entrance") ||
@@ -993,7 +898,8 @@ function lookupSharedPublicDecoration(
       if (
         (targetName.includes("crystal fairy lights") && sName.includes("crystal fairy lights")) ||
         (targetName.includes("carved wooden mandap") && sName.includes("carved wooden mandap")) ||
-        (targetName.includes("luxe floral grand") && sName.includes("luxe floral grand"))
+        (targetName.includes("luxe floral grand") && sName.includes("luxe floral grand")) ||
+        (targetName.includes("grand royal stage") && sName.includes("grand royal stage"))
       ) {
         return true;
       }
@@ -1064,6 +970,9 @@ function lookupSharedPublicDecoration(
     size = found.backdropSpecs.dimensions;
   } else if (found.stageSpecs?.dimensions) {
     size = found.stageSpecs.dimensions;
+  } else {
+    const parsedDesc = parseDetailsFromDescription(found.description);
+    if (parsedDesc.dimensions) size = parsedDesc.dimensions;
   }
 
   let compId = found.companyId || "company-1";
@@ -1203,6 +1112,44 @@ let setupsRemoteLoad: Promise<void> | null = null;
 let setupsRemoteLoadedAt = 0;
 let setupsRemoteLoadedOnce = false;
 
+let inlineImagesMigrating = false;
+
+/** One-off clean-up: moves photos still stored inside decoration rows to compressed Storage files. */
+async function migrateInlineImages(data: DecorationSetupItem[]) {
+  if (inlineImagesMigrating) return;
+  const pending = data.filter(hasInlineImages);
+  if (pending.length === 0) return;
+  inlineImagesMigrating = true;
+  try {
+    const moved = new Map<string, DecorationSetupItem>();
+    for (const setup of pending) {
+      const next = await moveDecorationImagesToStorage(setup);
+      if (hasInlineImages(next)) continue; // upload failed: keep the original photo
+      if (await upsertDecorationInSupabase(next)) moved.set(setup.id, next);
+    }
+    if (moved.size > 0) {
+      saveStoredSetups(loadStoredSetups().map((s) => moved.get(s.id) ?? s));
+    }
+  } finally {
+    inlineImagesMigrating = false;
+  }
+}
+
+/** Compresses the photos into Storage, saves the row, then swaps the small Storage links into the local copy. */
+async function syncSetupToSupabase(setup: DecorationSetupItem) {
+  const next = await moveDecorationImagesToStorage(setup);
+  if (hasInlineImages(next)) {
+    console.error("[decoration-setups] Photo upload to Storage failed; run supabase/storage.sql.");
+    return;
+  }
+  if (!(await upsertDecorationInSupabase(next))) return;
+  if (next !== setup) {
+    saveStoredSetups(
+      loadStoredSetups().map((s) => (s.id === next.id ? { ...s, imageUrl: next.imageUrl, gallery: next.gallery } : s))
+    );
+  }
+}
+
 function refreshSetupsFromSupabase(force = false): Promise<void> {
   if (setupsRemoteLoad) return setupsRemoteLoad;
   if (!force && Date.now() - setupsRemoteLoadedAt < SETUPS_FRESH_MS) return Promise.resolve();
@@ -1211,6 +1158,7 @@ function refreshSetupsFromSupabase(force = false): Promise<void> {
       setupsRemoteLoadedAt = Date.now();
       setupsRemoteLoadedOnce = true;
       saveStoredSetups(data);
+      void migrateInlineImages(data);
     })
     .catch((err) => {
       // Keep the cached catalogue; a failed request is not an empty catalogue.
@@ -1240,9 +1188,18 @@ function applyRemoteSetupChange(id: string) {
     .catch((err) => console.warn(`[decoration-setups] Loading decoration ${id} failed:`, err));
 }
 
-export function useDecorationSetupsStore() {
-  const [setups, setSetups] = useState<DecorationSetupItem[]>(loadStoredSetups);
+/**
+ * `setups` are the open company's decorations. Pass `{ allCompanies: true }` for the whole
+ * catalogue (other companies' designs, used when matching a client's inspiration).
+ */
+export function useDecorationSetupsStore(options?: { allCompanies?: boolean }) {
+  const [allSetups, setSetups] = useState<DecorationSetupItem[]>(loadStoredSetups);
   const [isLoaded, setIsLoaded] = useState(setupsRemoteLoadedOnce);
+  const allCompanies = options?.allCompanies === true;
+  const setups = useMemo(
+    () => (allCompanies ? allSetups : allSetups.filter((s) => isMyCompanyId(s.companyId))),
+    [allSetups, allCompanies],
+  );
 
   useEffect(() => {
     let active = true;
@@ -1296,7 +1253,7 @@ export function useDecorationSetupsStore() {
       saveStoredComponents(compMap);
     }
 
-    void upsertDecorationInSupabase(newSetup);
+    void syncSetupToSupabase(newSetup);
     return newSetup;
   };
 
@@ -1319,12 +1276,12 @@ export function useDecorationSetupsStore() {
     setSetups(updated);
     saveStoredSetups(updated);
     const target = updated.find((item) => item.id === id);
-    if (target) void upsertDecorationInSupabase(target);
+    if (target) void syncSetupToSupabase(target);
   };
 
   const deleteSetup = (id: string) => {
     recordDeletedSetupId(id);
-    const updated = setups.filter((s) => s.id !== id);
+    const updated = allSetups.filter((s) => s.id !== id);
     setSetups(updated);
     saveStoredSetups(updated);
 
@@ -1341,7 +1298,7 @@ export function useDecorationSetupsStore() {
    * This is purely a template operation — no inventory stock is touched.
    */
   const updateSetupComponents = (setupId: string, components: DecorationComponent[]) => {
-    const updated = setups.map((s) =>
+    const updated = allSetups.map((s) =>
       s.id === setupId ? { ...s, components, updatedAt: new Date().toISOString() } : s
     );
     setSetups(updated);
@@ -1353,7 +1310,7 @@ export function useDecorationSetupsStore() {
   };
 
   const getSetupComponents = (setupId: string): DecorationComponent[] => {
-    const fromSetup = setups.find((s) => s.id === setupId)?.components;
+    const fromSetup = allSetups.find((s) => s.id === setupId)?.components;
     if (fromSetup && fromSetup.length > 0) return fromSetup;
     const fromStorage = loadStoredComponents()[setupId];
     return fromStorage ?? [];

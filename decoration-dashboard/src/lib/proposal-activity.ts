@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import type { ClientCeremonyItem } from "./clients";
+import { type ClientCeremonyItem, getCeremonySubtotal } from "./clients";
 
 export interface ProposalActivity {
   proposalId: string;
@@ -131,7 +131,7 @@ export function computeProposalGrandTotal(
 ): number {
   if (ceremonies && ceremonies.length > 0) {
     const sumCeremonies = ceremonies.reduce(
-      (sum, c) => sum + (Number(c.setupPrice) || 0),
+      (sum, c) => sum + (Number(c.subtotal) || getCeremonySubtotal(c) || Number(c.setupPrice) || 0),
       0
     );
     if (sumCeremonies > 0) return sumCeremonies;

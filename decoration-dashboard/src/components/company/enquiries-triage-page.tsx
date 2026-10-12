@@ -1,3 +1,4 @@
+import { getCurrentCompanyName } from "@/lib/current-company";
 import { useState, useMemo, useEffect, ComponentType } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -72,7 +73,7 @@ import {
   type EnquirySource,
 } from "@/lib/enquiries";
 import { ensureEnquiryDetails, type EnquiryLoadState } from "@/lib/enquiry-sync";
-import { useBookedClientsStore, type BookedClient, type ClientCeremonyItem } from "@/lib/clients";
+import { useBookedClientsStore, type BookedClient, type ClientCeremonyItem, getClientTotal, formatCurrency, healEmptyQuotationCeremonies, getCeremonySubtotal, loadStoredBookedClients } from "@/lib/clients";
 import { ProposalDispatchModal } from "./proposal-dispatch-modal";
 import { ShareEnquiryFormButton } from "./share-enquiry-form-button";
 import { EnquiryExtraDetails } from "./enquiry-extra-details";
@@ -238,7 +239,14 @@ export function EnquiriesTriagePage() {
   const { clients, softDeleteClient, undoDeleteClient } = useBookedClientsStore();
 
   // Active Stage Filter State
-  const [selectedStage, setSelectedStage] = useState<PipelineStageId>("new_enquiries");
+  const [selectedStage, setSelectedStage] = useState<PipelineStageId>(() => {
+    // e.g. /enquiries?stage=quotations_made (used right after a quotation is created)
+    if (typeof window !== "undefined") {
+      const wanted = new URLSearchParams(window.location.search).get("stage");
+      if (wanted && PIPELINE_STAGES.some((st) => st.id === wanted)) return wanted as PipelineStageId;
+    }
+    return "new_enquiries";
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | EnquirySource>("all");
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
@@ -737,7 +745,7 @@ export function EnquiriesTriagePage() {
                   const timeSlotDisplay = enquiry.time_slot;
                   const guestCountDisplay = enquiry.guest_count;
                   const cleanPhone = (enquiry.phone || "").replace(/[^0-9+]/g, "");
-                  const cleanWa = (enquiry.whatsapp_number || enquiry.phone || "").replace(/[^0-9]/g, "");
+                  const cleanWa = (enquiry.whatsappNumber || enquiry.whatsapp_number || enquiry.phone || "").replace(/[^0-9]/g, "");
                   const clientInitial = (enquiry.client_name || "").trim().charAt(0).toUpperCase() || "C";
 
                   const timestampDisplay = (() => {
@@ -844,7 +852,7 @@ export function EnquiriesTriagePage() {
                                       title="Open WhatsApp Chat"
                                     >
                                       <MessageCircle className="size-3 text-[#128C7E] fill-current" />
-                                      <span>{enquiry.whatsapp_number || enquiry.phone}</span>
+                                      <span>{enquiry.whatsappNumber || enquiry.whatsapp_number || enquiry.phone}</span>
                                     </a>
                                   </div>
 
@@ -1171,11 +1179,11 @@ export function EnquiriesTriagePage() {
                             <div className="text-xs text-[#7A6B66]">
                               Total:{" "}
                               <strong className="text-[#2B2320]">
-                                Rs. {client.total_amount?.toLocaleString() || 0}
+                                {formatCurrency(getClientTotal(client))}
                               </strong>
                             </div>
                             <div className="text-xs font-bold text-[#D6415C]">
-                              Balance Due: Rs. {client.balance_due?.toLocaleString() || 0}
+                              Balance Due: {formatCurrency(Math.max(0, getClientTotal(client) - (client.paid_amount || 0)))}
                             </div>
                           </div>
 
@@ -1660,23 +1668,6 @@ function SidebarContent({
           </nav>
         </div>
       </div>
-
-      {/* Reset Sample Data Button */}
-      <div className="pt-2 border-t border-stone-100 mt-2 shrink-0">
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm("Reset sample leads? Real client enquiries will remain untouched.")) {
-              resetEnquiries();
-              toast.success("Sample leads refreshed. Real client enquiries preserved.");
-            }
-          }}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border border-stone-200 bg-white text-[11px] font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-50 transition-colors shadow-2xs cursor-pointer"
-        >
-          <RotateCcw className="size-3 text-stone-400" />
-          <span>Reset Sample Leads</span>
-        </button>
-      </div>
     </div>
   );
 }
@@ -1850,10 +1841,39 @@ function extractMonthChip(dateStr: string): string {
 }
 
 function getRecordAsBookedClient(record: UnifiedRecord): BookedClient {
-  if (record.type === "client") return record.data;
+  if (record.type === "client") {
+    return healEmptyQuotationCeremonies(record.data);
+  }
   const enq = record.data;
-  return {
+  const storedClients = loadStoredBookedClients(true);
+  const cleanEId = (enq.id || "").toLowerCase().replace(/^enq-/, "");
+  const eName = (enq.client_name || "").toLowerCase().trim();
+
+  const existingClient = storedClients.find((c) => {
+    const cId = (c.id || "").toLowerCase();
+    const cEnqId = (c.enquiry_id || "").toLowerCase();
+    const cleanCId = cId.replace(/^(bk-|enq-)/i, "");
+    const cleanPId = (c.proposal_id || "").toLowerCase().replace(/^(prop-|q-)/i, "");
+    if (cEnqId === (enq.id || "").toLowerCase() || cId === (enq.id || "").toLowerCase()) return true;
+    if (cleanEId && (cleanEId === cleanCId || cleanEId === cleanPId)) return true;
+    const cName = (c.client_name || "").toLowerCase().trim();
+    if (cName && eName) {
+      if (cName === eName || cName.includes(eName) || eName.includes(cName)) return true;
+      const cWords = cName.split(/[\s&,/+]+/).filter((w) => w.length > 2);
+      const eWords = eName.split(/[\s&,/+]+/).filter((w) => w.length > 2);
+      if (cWords.some((w) => eWords.includes(w))) return true;
+    }
+    return false;
+  });
+
+  if (existingClient) {
+    return healEmptyQuotationCeremonies(existingClient);
+  }
+
+  const fromEnqCeremonies = ceremoniesFromEnquiry(enq);
+  const client: BookedClient = {
     id: enq.id,
+    enquiry_id: enq.id,
     client_name: enq.client_name,
     event_type: enq.ceremony_type,
     event_date: `${enq.date_bs}${enq.date_ad ? ` (${enq.date_ad})` : ""}`,
@@ -1868,10 +1888,10 @@ function getRecordAsBookedClient(record: UnifiedRecord): BookedClient {
     needs_attention: false,
     phone: enq.phone,
     handler: enq.assigned_handler || "Pooja Thapa",
-    events_count: 1,
+    events_count: (fromEnqCeremonies && fromEnqCeremonies.length > 0) ? fromEnqCeremonies.length : 1,
     quotation_status: "Draft",
     proposal_id: `prop-${enq.id.replace("enq-", "")}`,
-    ceremonies: ceremoniesFromEnquiry(enq) ?? [
+    ceremonies: fromEnqCeremonies ?? [
       {
         id: "c-1",
         name: enq.ceremony_type,
@@ -1882,6 +1902,7 @@ function getRecordAsBookedClient(record: UnifiedRecord): BookedClient {
     ],
     notes: enq.private_note,
   };
+  return healEmptyQuotationCeremonies(client);
 }
 
 // Skeleton card placeholder
@@ -1952,7 +1973,7 @@ function QuotationsMadeCard({
   const clientName = enquiry?.client_name ?? client?.client_name ?? "";
   const phone = enquiry?.phone ?? client?.phone ?? "";
   const cleanPhone = phone.replace(/[^0-9+]/g, "");
-  const cleanWa = (enquiry?.whatsapp_number ?? phone).replace(/[^0-9]/g, "");
+  const cleanWa = (enquiry?.whatsappNumber ?? enquiry?.whatsapp_number ?? phone).replace(/[^0-9]/g, "");
   const clientInitial = clientName.trim().charAt(0).toUpperCase() || "C";
   const source: EnquirySource | undefined = enquiry?.source;
   const handler = enquiry?.assigned_handler ?? client?.handler;
@@ -1975,18 +1996,23 @@ function QuotationsMadeCard({
     : "Quotation created";
 
   // Ceremonies
-  const rawCeremonies = client?.ceremonies ?? [];
-  const ceremonies: ClientCeremonyItem[] = rawCeremonies.length > 0
-    ? rawCeremonies
-    : [
-        {
-          id: "c-1",
-          name: enquiry?.ceremony_type || client?.event_type || "Wedding Ceremony",
-          date: enquiry?.date_bs ? `${enquiry.date_bs}${enquiry.date_ad ? ` · ${enquiry.date_ad}` : ""}` : client?.event_date || "Date on record",
-          venue: enquiry?.venue || client?.venue || "Venue on record",
-          setupPrice: enquiry?.estimated_budget_npr || client?.total_amount || 0,
-        },
-      ];
+  const ceremonies: ClientCeremonyItem[] = useMemo(() => {
+    if (clientObject.ceremonies && clientObject.ceremonies.length > 0) {
+      return clientObject.ceremonies;
+    }
+    const rawCeremonies = client?.ceremonies ?? [];
+    return rawCeremonies.length > 0
+      ? rawCeremonies
+      : [
+          {
+            id: "c-1",
+            name: enquiry?.ceremony_type || client?.event_type || "Wedding Ceremony",
+            date: enquiry?.date_bs ? `${enquiry.date_bs}${enquiry.date_ad ? ` · ${enquiry.date_ad}` : ""}` : client?.event_date || "Date on record",
+            venue: enquiry?.venue || client?.venue || "Venue on record",
+            setupPrice: enquiry?.estimated_budget_npr || client?.total_amount || 0,
+          },
+        ];
+  }, [clientObject, enquiry, client]);
 
   const visibleCeremonies = isExpanded ? ceremonies : ceremonies.slice(0, 3);
   const hiddenCount = ceremonies.length - 3;
@@ -2000,7 +2026,7 @@ function QuotationsMadeCard({
   const { activity, updateActivity } = useProposalActivity(proposalId);
 
   // Grand Total & Pending calculations
-  const grandTotal = computeProposalGrandTotal(ceremonies, client?.total_amount || enquiry?.estimated_budget_npr);
+  const grandTotal = getClientTotal(clientObject) || computeProposalGrandTotal(ceremonies, client?.total_amount || enquiry?.estimated_budget_npr);
   const hasAmount = grandTotal > 0;
   const advanceAmount = Math.round(grandTotal * 0.4);
   const pendingCount = countPendingPriceItems(ceremonies);
@@ -2017,7 +2043,8 @@ function QuotationsMadeCard({
     })
     .join("\n\n");
 
-  const fullWaMessage = `🌸 *NAMASTE ${clientName.toUpperCase()}!* 🌸\nWarm greetings from our Decoration Studio.\n\nWe have prepared your personalized multi-day decoration quotation:\n\n━━━━━━━━━━━━━━━━━━━━━━\n💍 *EVENT SCHEDULE:*\n━━━━━━━━━━━━━━━━━━━━━━\n${ceremonyLines}\n\n━━━━━━━━━━━━━━━━━━━━━━\n💎 *GRAND TOTAL:* NPR ${grandTotal.toLocaleString()}\n💳 *40% ADVANCE:* NPR ${advanceAmount.toLocaleString()}\n━━━━━━━━━━━━━━━━━━━━━━\n\n🔗 *VIEW YOUR LIVE INTERACTIVE PROPOSAL:*\n${proposalUrl}\n\nFeel free to review your options and let us know your thoughts!`;
+  const eventCount = Math.max(1, ceremonies.length);
+  const fullWaMessage = `Hi ${clientName}, 👋\n\nThank you for reaching out to ${getCurrentCompanyName()}. Your quotation for ${eventCount} event${eventCount > 1 ? "s" : ""} is ready.\n\nView your quotation here: ${proposalUrl}`;
 
   const waEncoded = encodeURIComponent(fullWaMessage);
 
@@ -2189,20 +2216,26 @@ function QuotationsMadeCard({
                     {c.venue}
                   </div>
                 )}
-                {c.setupName && (
-                  <div className="text-[10.5px] text-stone-500 pl-3 flex items-center justify-between gap-1">
-                    <span className="truncate italic">✨ {c.setupName}</span>
-                    {c.setupPrice ? (
-                      <span className="shrink-0 font-medium text-stone-600">
-                        {formatNPR(c.setupPrice)}
-                      </span>
-                    ) : (
-                      <span className="shrink-0 text-amber-600 font-semibold text-[10px]">
-                        Pending price
-                      </span>
-                    )}
-                  </div>
-                )}
+                {(() => {
+                  const firstItemName = c.items?.[0]?.name;
+                  const sName = c.setupName || (c.items && c.items.length > 0 && firstItemName ? (c.items.length === 1 ? firstItemName : `${firstItemName} + ${c.items.length - 1} more`) : null);
+                  if (!sName) return null;
+                  const sPrice = (typeof c.setupPrice === "number" && c.setupPrice > 0) ? c.setupPrice : getCeremonySubtotal(c);
+                  return (
+                    <div className="text-[10.5px] text-stone-500 pl-3 flex items-center justify-between gap-1">
+                      <span className="truncate italic">✨ {sName}</span>
+                      {sPrice > 0 ? (
+                        <span className="shrink-0 font-medium text-stone-600">
+                          {formatNPR(sPrice)}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-amber-600 font-semibold text-[10px]">
+                          Pending price
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -2230,7 +2263,7 @@ function QuotationsMadeCard({
         </div>
 
         {/* Staff-only: Full price breakdown accordion */}
-        {ceremonies.some((c) => c.setupName && (c.setupPrice ?? 0) > 0) && (
+        {ceremonies.some((c) => (c.setupName || (c.items && c.items.length > 0)) && ((c.setupPrice ?? getCeremonySubtotal(c)) > 0)) && (
           <div className="rounded-xl border border-stone-200 overflow-hidden">
             <button
               type="button"
@@ -2248,13 +2281,15 @@ function QuotationsMadeCard({
             {isBreakdownOpen && (
               <div className="px-3 py-2.5 space-y-3 bg-white border-t border-stone-100">
                 {ceremonies.map((c, idx) => {
-                  if (!c.setupName) return null;
+                  const sName = c.setupName || c.items?.[0]?.name;
+                  if (!sName) return null;
+                  const sPrice = (typeof c.setupPrice === "number" && c.setupPrice > 0) ? c.setupPrice : getCeremonySubtotal(c);
                   const itemBd = getDecorItemBreakdown({
-                    n: c.setupName,
+                    n: sName,
                     s: c.category ? `${c.category} arrangement` : "Ceremonial setup",
-                    p: Number(c.setupPrice) || 0,
-                    pending: !c.setupPrice,
-                    setupId: c.setupId,
+                    p: Number(sPrice) || 0,
+                    pending: !sPrice,
+                    setupId: c.setupId || c.items?.[0]?.setupId,
                     category: c.category,
                   });
                   return (
@@ -2373,9 +2408,18 @@ function QuotationsMadeCard({
             <div className="flex items-center gap-1.5">
               <Sparkles className="size-3 text-[#E8546F] shrink-0" />
               <span>
-                {activity.addonsSelectedCount > 0
-                  ? `${activity.addonsSelectedCount} add-on${activity.addonsSelectedCount > 1 ? "s" : ""} picked`
-                  : "0 add-ons"}
+                {(() => {
+                  const quotationAddons = (clientObject.paid_addons?.length ?? 0) > 0
+                    ? (clientObject.paid_addons?.length ?? 0)
+                    : (clientObject.addOns?.length ?? 0) > 0
+                      ? (clientObject.addOns?.length ?? 0)
+                      : ceremonies.reduce((acc, c) => acc + (c.items?.filter((it) => it.isAddon)?.length || 0), 0);
+                  const count = activity.addonsSelectedCount > 0 ? activity.addonsSelectedCount : quotationAddons;
+                  if (count > 0) {
+                    return `${count} add-on${count > 1 ? "s" : ""}${activity.addonsSelectedCount > 0 ? " picked" : ""}`;
+                  }
+                  return "0 add-ons";
+                })()}
               </span>
             </div>
           </div>

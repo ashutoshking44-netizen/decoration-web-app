@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { loadStoredEnquiries } from "./enquiries";
-import { loadStoredBookedClients } from "./clients";
+import { isMyBookedClient, loadStoredBookedClients } from "./clients";
+import { enquiryBelongsToCurrentCompany } from "./company-scope";
 import { loadProfile } from "./company-profile";
 
 export type Permission =
@@ -89,8 +90,8 @@ const days: CalendarDay[] = [
 
 export function buildLiveDashboardData(): DashboardData {
   const profile = loadProfile();
-  const enquiries = loadStoredEnquiries();
-  const clients = loadStoredBookedClients();
+  const enquiries = loadStoredEnquiries().filter(enquiryBelongsToCurrentCompany);
+  const clients = loadStoredBookedClients().filter(isMyBookedClient);
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);

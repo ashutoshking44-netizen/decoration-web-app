@@ -19,35 +19,39 @@ const MAX_BODY = 80 * 1024 * 1024;
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-/** @type {{ decorations: any[]; enquiries: any[] }} */
-let db = { decorations: [], enquiries: [] };
-try {
-  if (fs.existsSync(DB_FILE)) {
-    const raw = fs.readFileSync(DB_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      db = {
-        decorations: Array.isArray(parsed.decorations) ? parsed.decorations : [],
-        enquiries: Array.isArray(parsed.enquiries) ? parsed.enquiries : [],
-      };
-    }
-  }
-} catch (err) {
-  console.error("[API Server] Failed to read db.json, attempting backup restore:", err);
+function loadDb() {
   try {
-    const bakFile = DB_FILE + ".bak";
-    if (fs.existsSync(bakFile)) {
-      const bakRaw = fs.readFileSync(bakFile, "utf8");
-      const parsedBak = JSON.parse(bakRaw);
-      if (parsedBak && typeof parsedBak === "object") {
-        db = {
-          decorations: Array.isArray(parsedBak.decorations) ? parsedBak.decorations : [],
-          enquiries: Array.isArray(parsedBak.enquiries) ? parsedBak.enquiries : [],
+    if (fs.existsSync(DB_FILE)) {
+      const raw = fs.readFileSync(DB_FILE, "utf8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return {
+          decorations: Array.isArray(parsed.decorations) ? parsed.decorations : [],
+          enquiries: Array.isArray(parsed.enquiries) ? parsed.enquiries : [],
         };
       }
     }
-  } catch {}
+  } catch (err) {
+    console.error("[API Server] Failed to read db.json, attempting backup restore:", err);
+    try {
+      const bakFile = DB_FILE + ".bak";
+      if (fs.existsSync(bakFile)) {
+        const bakRaw = fs.readFileSync(bakFile, "utf8");
+        const parsedBak = JSON.parse(bakRaw);
+        if (parsedBak && typeof parsedBak === "object") {
+          return {
+            decorations: Array.isArray(parsedBak.decorations) ? parsedBak.decorations : [],
+            enquiries: Array.isArray(parsedBak.enquiries) ? parsedBak.enquiries : [],
+          };
+        }
+      }
+    } catch {}
+  }
+  return { decorations: [], enquiries: [] };
 }
+
+/** @type {{ decorations: any[]; enquiries: any[] }} */
+let db = loadDb();
 
 function persist() {
   if (!db || typeof db !== "object") return;
@@ -130,6 +134,8 @@ const str = (v, max = 2000) => (typeof v === "string" ? v.trim().slice(0, max) :
 function normaliseEnquiry(input) {
   const name = str(input?.name, 120);
   const phone = str(input?.phone, 40);
+  const whatsappNumber = str(input?.whatsappNumber || input?.whatsapp_number, 40);
+  const whatsappSameAsPhone = input?.whatsappSameAsPhone !== undefined ? Boolean(input.whatsappSameAsPhone) : true;
   if (!name) throw new Error("Name is required");
   if (!phone) throw new Error("Phone is required");
   const events = (Array.isArray(input?.events) ? input.events : []).slice(0, 20).map((e) => ({
@@ -149,6 +155,13 @@ function normaliseEnquiry(input) {
           (dId === "crystal-fairy-lights" && (iId === "dec-c2-fairy-lights" || iId === "dec-c2-fairy-lights-entrance")) ||
           (dId === "crystal-fairy-lights-entrance" && (iId === "dec-c2-fairy-lights" || iId === "dec-c2-fairy-lights-entrance"))
         ) return true;
+        if (
+          (dId === "dummy-royal-orchid-stage" || dId === "9101" || dId === "grand-royal-stage") &&
+          (iId === "dummy-royal-orchid-stage" || iId === "9101" || iId === "grand-royal-stage")
+        ) return true;
+        const dName = String(d?.name || d?.title || "").toLowerCase();
+        const iName = String(item.name || item.title || "").toLowerCase();
+        if (dName && iName && (dName === iName || (dName.includes("grand royal stage") && iName.includes("grand royal stage")))) return true;
         return false;
       });
       let ownerCompanyId = str(d?.companyId || d?.ownerCompanyId || catalogItem?.companyId || catalogItem?.ownerCompanyId, 80);
@@ -183,7 +196,49 @@ function normaliseEnquiry(input) {
 
       const priceUnit = str(d?.priceUnit || d?.price_unit || catalogItem?.priceUnit || catalogItem?.price_unit || catalogItem?.specifications?.price_unit, 40);
 
-      // Inclusions (explicit or synthesized from specifications)
+      // Fallback: parse description text if fields are missing
+      const parsedDesc = {};
+      if (description) {
+        const dimMatch = /(?:Dimensions|Size):\s*([0-9]+(?:\.[0-9]+)?\s*[×xX*]\s*[0-9]+(?:\.[0-9]+)?\s*(?:ft|feet)?)/i.exec(description);
+        if (dimMatch) parsedDesc.dimensions = dimMatch[1].trim();
+
+        const platMatch = /Platform:\s*([^.\n]+)/i.exec(description);
+        if (platMatch && !/^no\b|^none\b/i.test(platMatch[1].trim())) parsedDesc.platform = platMatch[1].trim();
+
+        const lightMatch = /Lighting:\s*([^.\n]+)/i.exec(description);
+        if (lightMatch && !/^no\b|^none\b/i.test(lightMatch[1].trim())) parsedDesc.lighting = lightMatch[1].trim();
+
+        const floralMatch = /Floral:\s*([^.\n]+)/i.exec(description);
+        if (floralMatch && !/^no\b|^none\b/i.test(floralMatch[1].trim())) parsedDesc.flowers = floralMatch[1].trim();
+
+        const firstSentence = description.split(/\.|\n/)[0]?.trim();
+        if (firstSentence) {
+          if (firstSentence.toLowerCase().includes(" with ")) {
+            const parts = firstSentence.split(/\s+with\s+/i);
+            parsedDesc.structure = parts[0]?.trim();
+            if (!parsedDesc.flowers && parts[1]) parsedDesc.flowers = parts[1].trim();
+          } else if (firstSentence.includes("(") && !firstSentence.toLowerCase().startsWith("dimensions")) {
+            const pMatch = /^([^(]+)\(([^)]+)\)/.exec(firstSentence);
+            if (pMatch) {
+              parsedDesc.structure = pMatch[1].trim();
+              parsedDesc.style = pMatch[2].trim();
+            } else {
+              parsedDesc.structure = firstSentence;
+            }
+          } else if (firstSentence.length < 80 && !firstSentence.toLowerCase().startsWith("dimensions")) {
+            parsedDesc.structure = firstSentence;
+          }
+        }
+
+        const inc = [];
+        if (parsedDesc.structure) inc.push(parsedDesc.structure);
+        if (parsedDesc.flowers) inc.push(parsedDesc.flowers);
+        if (parsedDesc.platform) inc.push(`Platform: ${parsedDesc.platform}`);
+        if (parsedDesc.lighting) inc.push(`Lighting: ${parsedDesc.lighting}`);
+        if (inc.length > 0) parsedDesc.inclusions = inc;
+      }
+
+      // Inclusions (explicit or synthesized from specifications or description)
       let inclusions = Array.isArray(d?.inclusions) && d.inclusions.length > 0
         ? d.inclusions
         : (Array.isArray(catalogItem?.inclusions) && catalogItem.inclusions.length > 0 ? catalogItem.inclusions : undefined);
@@ -206,10 +261,13 @@ function normaliseEnquiry(input) {
         if (specs.furniture_used && specs.furniture_details) synth.push(`Furniture: ${specs.furniture_details}`);
         if (synth.length > 0) inclusions = synth;
       }
+      if (!inclusions && parsedDesc.inclusions) {
+        inclusions = parsedDesc.inclusions;
+      }
 
       // Style
       const style = str(
-        d?.style || catalogItem?.style || (Array.isArray(catalogItem?.specifications?.setup_styles) ? catalogItem.specifications.setup_styles.join(", ") : ""),
+        d?.style || catalogItem?.style || (Array.isArray(catalogItem?.specifications?.setup_styles) ? catalogItem.specifications.setup_styles.join(", ") : "") || parsedDesc.style || "",
         120
       );
 
@@ -220,15 +278,15 @@ function normaliseEnquiry(input) {
       );
 
       // Size / dimensions
-      let size = str(d?.size || catalogItem?.size || d?.dimensions || catalogItem?.dimensions, 80);
+      let size = str(d?.size || catalogItem?.size || d?.dimensions || catalogItem?.dimensions || parsedDesc.dimensions || "", 80);
       if (!size && catalogItem?.specifications?.dimensions?.width_ft && catalogItem?.specifications?.dimensions?.height_ft) {
         size = `${catalogItem.specifications.dimensions.width_ft} × ${catalogItem.specifications.dimensions.height_ft} ft`;
       }
 
-      const structure = str(d?.structure || catalogItem?.structure || catalogItem?.specifications?.main_structure || catalogItem?.specifications?.structure_type || catalogItem?.entranceGateSpecs?.structureType || catalogItem?.mandapSpecs?.structureType, 200);
-      const platform = str(d?.platform || catalogItem?.platform, 200);
-      const lighting = str(d?.lighting || catalogItem?.lighting, 200);
-      const flowers = str(d?.flowers || catalogItem?.flowers, 200);
+      const structure = str(d?.structure || catalogItem?.structure || catalogItem?.specifications?.main_structure || catalogItem?.specifications?.structure_type || catalogItem?.entranceGateSpecs?.structureType || catalogItem?.mandapSpecs?.structureType || parsedDesc.structure || "", 200);
+      const platform = str(d?.platform || catalogItem?.platform || parsedDesc.platform || "", 200);
+      const lighting = str(d?.lighting || catalogItem?.lighting || parsedDesc.lighting || "", 200);
+      const flowers = str(d?.flowers || catalogItem?.flowers || parsedDesc.flowers || "", 200);
       const seating = str(d?.seating || catalogItem?.seating, 200);
       const customText = str(d?.customText || catalogItem?.customText || catalogItem?.welcomeBoardSpecs?.personalizationNotes, 200);
       const eventsField = str(d?.events || (Array.isArray(catalogItem?.events) ? catalogItem.events.join(", ") : ""), 200);
@@ -275,6 +333,9 @@ function normaliseEnquiry(input) {
     type: input?.type === "direct-order" ? "direct-order" : "quotation-request",
     name,
     phone,
+    whatsappNumber: whatsappNumber || phone,
+    whatsapp_number: whatsappNumber || phone,
+    whatsappSameAsPhone,
     email: str(input?.email, 160),
     message: str(input?.message, 4000),
     venue: str(input?.venue, 200),
@@ -310,6 +371,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Decorations ────────────────────────────────────────────────────────
     if (p === "/api/decorations" && req.method === "GET") {
+      db = loadDb();
       const live = url.searchParams.get("status") === "live";
       const list = live ? db.decorations.filter((d) => String(d.status).toLowerCase() === "live") : db.decorations;
       return send(res, 200, { decorations: list });
@@ -317,6 +379,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/decorations" && req.method === "PUT") {
       const body = await readJson(req);
       if (!Array.isArray(body?.decorations)) return send(res, 400, { error: "decorations[] required" });
+      db = loadDb();
       db.decorations = externalizeImages(body.decorations);
       persist();
       return send(res, 200, { ok: true, count: db.decorations.length });
@@ -325,12 +388,14 @@ const server = http.createServer(async (req, res) => {
     // ── Enquiries ──────────────────────────────────────────────────────────
     if (p === "/api/enquiries" && req.method === "POST") {
       const rawBody = await readJson(req);
+      db = loadDb();
       const enquiry = externalizeImages(normaliseEnquiry(rawBody));
       db.enquiries.unshift(enquiry);
       persist();
       return send(res, 201, { ok: true, id: enquiry.id });
     }
     if (p === "/api/enquiries" && req.method === "GET") {
+      db = loadDb();
       return send(res, 200, { enquiries: db.enquiries });
     }
 

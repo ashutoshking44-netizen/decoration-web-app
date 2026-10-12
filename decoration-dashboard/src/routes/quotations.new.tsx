@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { QuotationStudioPage } from "@/components/company/quotation-studio-page";
-import { loadProfile } from "@/lib/company-profile";
+import { getActiveCompanyId } from "@/lib/company-profile";
 import { useDecorationSetupsStore, loadStoredSetups } from "@/lib/decoration-setups";
 import { useMemo } from "react";
 
@@ -33,7 +33,7 @@ export const Route = createFileRoute("/quotations/new")({
     };
   },
   beforeLoad: () => {
-    if (!loadProfile()) throw redirect({ to: "/setup" });
+    if (!getActiveCompanyId()) throw redirect({ to: "/companies" });
   },
   head: () => ({
     meta: [

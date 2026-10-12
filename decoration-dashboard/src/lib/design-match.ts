@@ -70,6 +70,8 @@ export interface DesignPick {
   category: string;
   image?: string | undefined;
   companyName?: string | undefined;
+  /** The full decoration the client sent (price, description, inclusions, specs). */
+  raw?: any;
 }
 
 /** Key for a pick that stays the same however often the enquiry is reloaded. */

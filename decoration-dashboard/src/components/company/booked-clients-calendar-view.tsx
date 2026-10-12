@@ -20,6 +20,8 @@ import {
   BOOKING_STAGES,
   parseEventDate,
   computeDecorationItemPrice,
+  getClientTotal,
+  formatCurrency,
 } from "@/lib/clients";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -448,7 +450,7 @@ export function BookedClientsCalendarView({
                         <div className="hidden sm:flex items-center justify-between text-[9px] text-[#8A7B76] mt-0.5">
                           <span className="truncate">{client.event_type.split(" ")[0]}</span>
                           <span className="font-semibold text-[#4A3F3C] tabular-nums">
-                            ₹{Math.round((client.decorations || []).reduce((s, d) => s + computeDecorationItemPrice(d), 0) / 1000)}k
+                            Rs. {Math.round(getClientTotal(client) / 1000)}k
                           </span>
                         </div>
                       </button>
@@ -568,7 +570,7 @@ export function BookedClientsCalendarView({
                       <div className="text-xs">
                         <span className="text-[#8A7B76]">Total: </span>
                         <strong className="tabular-nums font-bold text-[#2B2320]">
-                          ₹{(client.decorations || []).reduce((s, d) => s + computeDecorationItemPrice(d), 0).toLocaleString()}
+                          {formatCurrency(getClientTotal(client))}
                         </strong>
                       </div>
 

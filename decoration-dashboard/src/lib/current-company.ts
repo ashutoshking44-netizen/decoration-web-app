@@ -1,4 +1,4 @@
-import { loadProfile } from "./company-profile";
+import { getActiveCompanyId, loadProfile } from "./company-profile";
 
 // temporary until company login is built
 export const CURRENT_COMPANY_ID = "company-1";
@@ -15,18 +15,20 @@ export const PRESET_COMPANIES: CompanyOption[] = [
 ];
 
 export function getCurrentCompanyId(): string {
-  // temporary until company login is built
-  return CURRENT_COMPANY_ID;
+  // The company opened from the company picker (company-1 when none is open).
+  return getActiveCompanyId() || CURRENT_COMPANY_ID;
 }
 
 export function isMyCompanyId(id?: string | number | null): boolean {
   if (id === undefined || id === null || id === "") return false;
   const s = String(id).trim().toLowerCase();
-  if (s === CURRENT_COMPANY_ID.toLowerCase()) return true;
-  if (s === "company-1" || s === "company_1" || s === "comp-1" || s === "1") return true;
-  const myNorm = CURRENT_COMPANY_ID.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const norm = s.replace(/[^a-z0-9]/g, "");
-  return norm === myNorm || norm === "1" || norm === "company1" || norm === "comp1";
+  const mine = getCurrentCompanyId();
+  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (s === mine.toLowerCase() || norm(s) === norm(mine)) return true;
+  if (mine === "company-1") {
+    return s === "company_1" || s === "comp-1" || s === "1" || norm(s) === "company1" || norm(s) === "comp1";
+  }
+  return false;
 }
 
 export function getCurrentCompanyName(): string {
@@ -40,7 +42,7 @@ export function getCurrentCompanyName(): string {
 
 export function getCompanyNameById(id?: string | null): string {
   if (!id) return "Unknown";
-  if (id === CURRENT_COMPANY_ID || id === "company-1" || id === "comp-1") {
+  if (id === getCurrentCompanyId() || (id === "company-1" && !getActiveCompanyId()) || id === "comp-1") {
     return getCurrentCompanyName();
   }
   if (id === "company-2" || id === "comp-2") return "Royal Orchid Events";
@@ -51,7 +53,7 @@ export function getCompanyNameById(id?: string | null): string {
 
 export function useCurrentCompany() {
   return {
-    currentCompanyId: CURRENT_COMPANY_ID,
+    currentCompanyId: getCurrentCompanyId(),
     currentCompanyName: getCurrentCompanyName(),
   };
 }

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { DecorationProposalView } from "@/components/company/decoration-proposal-view";
-import { loadStoredBookedClients, convertEnquiryToBookedClient, type BookedClient } from "@/lib/clients";
+import { loadStoredBookedClients, convertEnquiryToBookedClient, healEmptyQuotationCeremonies, type BookedClient } from "@/lib/clients";
 import { loadStoredEnquiries } from "@/lib/enquiries";
 
 export const Route = createFileRoute("/proposal/$proposalId")({
@@ -33,15 +33,19 @@ function ProposalRouteComponent() {
       allClients.find((c) => {
         const pId = (c.proposal_id || "").toLowerCase();
         const cId = (c.id || "").toLowerCase();
-        const cleanCId = cId.replace(/^bk-/, "");
-        const cleanNeedle = needle.replace(/^prop-/, "").replace(/^q-/, "");
+        const eId = (c.enquiry_id || "").toLowerCase();
+        const cleanCId = cId.replace(/^(bk-|enq-)/, "");
+        const cleanEId = eId.replace(/^enq-/, "");
+        const cleanNeedle = needle.replace(/^(prop-|q-|bk-|enq-)/, "");
 
         return (
           pId === needle ||
           cId === needle ||
+          eId === needle ||
           (pId && (pId.startsWith(needle) || needle.startsWith(pId))) ||
           (cId && (cId.startsWith(needle) || needle.startsWith(cId))) ||
-          (cleanCId && (cleanCId === cleanNeedle || needle.includes(cleanCId) || cleanCId.includes(needle)))
+          (eId && (eId.startsWith(needle) || needle.startsWith(eId))) ||
+          (cleanNeedle && (cleanCId === cleanNeedle || cleanEId === cleanNeedle || needle.includes(cleanCId) || cleanCId.includes(needle)))
         );
       }) || null
     );
@@ -55,11 +59,13 @@ function ProposalRouteComponent() {
         const eId = (e.id || "").toLowerCase();
         const propId = `prop-${eId.replace("enq-", "")}`;
         const qNum = (e.quotation_number || "").toLowerCase();
+        const cleanEId = eId.replace(/^enq-/, "");
+        const cleanNeedle = needle.replace(/^(prop-|q-|bk-|enq-)/, "");
         return (
           eId === needle ||
           propId === needle ||
           (qNum && (qNum === needle || needle.includes(qNum) || qNum.includes(needle))) ||
-          eId.replace("enq-", "") === needle.replace("prop-", "").replace("q-", "")
+          (cleanNeedle && cleanEId === cleanNeedle)
         );
       }) || null
     );
@@ -68,7 +74,7 @@ function ProposalRouteComponent() {
   // Determine final live client
   const liveClient: BookedClient | null = useMemo(() => {
     if (matchingClient && !matchingClient.deleted_at) {
-      return matchingClient;
+      return healEmptyQuotationCeremonies(matchingClient);
     }
     if (matchingEnquiry && !matchingEnquiry.deleted_at) {
       return convertEnquiryToBookedClient(matchingEnquiry);

@@ -1,4 +1,4 @@
-import type { BookedClient, ClientCeremonyItem } from "./clients";
+import { type BookedClient, type ClientCeremonyItem, getClientTotal, getCeremonySubtotal } from "./clients";
 
 /** The ceremonies shown in a proposal (a single default one when none are stored). */
 export function proposalCeremonies(client: BookedClient | null): ClientCeremonyItem[] {
@@ -11,6 +11,7 @@ export function proposalCeremonies(client: BookedClient | null): ClientCeremonyI
         venue: client?.venue || "Venue On Record",
         setupName: client?.decorations?.[0]?.name || "Custom Royal Stage Setup",
         setupPrice: client?.total_amount || 65000,
+        subtotal: client?.total_amount || 65000,
         category: client?.decorations?.[0]?.type || "Stage",
         setupImage: "https://images.unsplash.com/photo-1519741497674-611481863552?w=400&auto=format&fit=crop&q=80",
       },
@@ -22,7 +23,9 @@ export function proposalCeremonies(client: BookedClient | null): ClientCeremonyI
 /** Grand total in NPR across the ceremonies (falls back to the booking total). */
 export function proposalTotal(client: BookedClient | null, ceremonies: ClientCeremonyItem[]): number {
   if (!client) return 0;
-  const sum = ceremonies.reduce((s, c) => s + (Number(c.setupPrice) || 0), 0);
+  const directTotal = getClientTotal(client);
+  if (directTotal > 0) return directTotal;
+  const sum = ceremonies.reduce((s, c) => s + (Number(c.subtotal) || getCeremonySubtotal(c) || Number(c.setupPrice) || 0), 0);
   return sum > 0 ? sum : client.total_amount;
 }
 
@@ -46,7 +49,7 @@ export function buildProposalMessage(
   const ceremonyLines = ceremonies
     .map((c) => {
       const setup = c.setupName ? `*${c.setupName}* (${c.category || "Decor"})` : "*Custom Designed Setup*";
-      const price = c.setupPrice ? ` — Rs. ${Number(c.setupPrice).toLocaleString()}` : "";
+      const price = c.subtotal || c.setupPrice ? ` — Rs. ${Number(c.subtotal || c.setupPrice).toLocaleString()}` : "";
       return `• *${c.name}* (${c.date})\n  📍 ${c.venue}\n  ✨ Setup: ${setup}${price}`;
     })
     .join("\n\n");

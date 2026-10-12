@@ -668,54 +668,10 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  const waLink = useMemo(() => {
-    if (!submitted || !studioWhatsapp) return null;
-    const q = submitted.enquiry;
-    const evs = q.events ?? [];
-    const lines = [
-      `Hello ${studio}! I'd like to enquire about decoration.`,
-      "",
-      `Name: ${q.client_name}`,
-      `Phone: ${q.phone}`,
-      q.email ? `Email: ${q.email}` : "",
-      `Location: ${q.location}`,
-      "",
-      ...evs.flatMap((e, i) => {
-        const catDetails = e.category_details as Record<string, { note?: string; photoUrl?: string; link?: string }> | undefined;
-        const reqLines = e.requirements?.length
-          ? e.requirements.map((r) => {
-              const det = catDetails?.[r];
-              const parts: string[] = [];
-              if (det?.note) parts.push(`"${det.note}"`);
-              if (det?.photoUrl) parts.push("📷 Photo attached");
-              if (det?.link) parts.push(`Link: ${det.link}`);
-              return parts.length ? `    • ${r}: ${parts.join(" · ")}` : `    • ${r}`;
-            })
-          : [];
-
-        return [
-          `Event ${i + 1}: ${e.name}`,
-          e.date_ad === "Date pending"
-            ? `  Date: ${e.date_bs}`
-            : `  Date: ${e.date_ad}${e.date_bs ? ` (${e.date_bs})` : ""}`,
-          `  Venue: ${e.venue}`,
-          reqLines.length ? `  Needs:\n${reqLines.join("\n")}` : "",
-          e.note ? `  Note: ${e.note}` : "",
-        ];
-      }),
-      submitted.enquiry.reference_photo_count
-        ? "\nI'll send my reference photos here in this chat."
-        : "",
-    ].filter((l, i, arr) => l !== "" || (i > 0 && arr[i - 1] !== ""));
-    return `https://wa.me/${toWhatsappDigits(studioWhatsapp)}?text=${encodeURIComponent(lines.join("\n"))}`;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submitted, studio, studioWhatsapp]);
-
   // ── Success state ──────────────────────────────────────────────────────
   if (submitted) {
     const q = submitted.enquiry;
     const evs = q.events ?? [];
-    const hadPhotos = (q.reference_photo_count ?? 0) > 0;
     return (
       <Shell studio={studio}>
         <div className="rounded-[28px] border border-[#F3D5DB] bg-white p-8 text-center shadow-[0_12px_40px_rgba(232,84,111,.08)] sm:p-12">
@@ -730,12 +686,6 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
             <strong>{evs.length > 1 ? `${evs.length} events` : q.ceremony_type}</strong> has been
             recorded. {studio} will review it and send you a quotation.
           </p>
-          {hadPhotos && !submitted.photosSaved && (
-            <p className="mx-auto mt-4 max-w-sm rounded-xl bg-[#FFF8E6] px-4 py-3 text-xs leading-relaxed text-[#8A5A00]">
-              We couldn't save your reference photos on this device. Please send them to {studio}{" "}
-              on WhatsApp using the button below.
-            </p>
-          )}
           {evs.length > 1 && (
             <ul className="mx-auto mt-4 max-w-xs space-y-1 text-left text-xs text-[#6E5D57]">
               {evs.map((e, i) => (
@@ -747,39 +697,23 @@ export function ClientEnquiryForm({ studioName, studioWhatsapp }: ClientEnquiryF
             </ul>
           )}
 
-          {waLink ? (
-            <>
-              <a
-                href={waLink}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#25D366] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-95"
-              >
-                <MessageCircle className="size-4" />
-                Send these details to {studio} on WhatsApp
-              </a>
-              <p className="mt-2 text-xs text-[#8A7B76]">
-                Tap once so the studio receives your enquiry instantly
-                {hadPhotos ? " — you can attach your reference photos in that chat." : "."}
-              </p>
-            </>
-          ) : null}
-
-          <button
-            type="button"
-            onClick={() => {
-              setSubmitted(null);
-              setForm(EMPTY);
-              setDates([]);
-              setEvents([]);
-              setErrors({});
-              setEventErrors({});
-              setStep(0);
-            }}
-            className="mt-5 text-xs font-semibold text-[#D6415C] underline-offset-2 hover:underline"
-          >
-            Submit another enquiry
-          </button>
+          <div className="mt-8">
+            <button
+              type="button"
+              onClick={() => {
+                setSubmitted(null);
+                setForm(EMPTY);
+                setDates([]);
+                setEvents([]);
+                setErrors({});
+                setEventErrors({});
+                setStep(0);
+              }}
+              className="text-xs font-semibold text-[#D6415C] underline-offset-2 hover:underline cursor-pointer"
+            >
+              Submit another enquiry
+            </button>
+          </div>
         </div>
       </Shell>
     );

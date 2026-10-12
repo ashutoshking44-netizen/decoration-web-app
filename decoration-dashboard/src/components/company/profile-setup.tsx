@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Check, ChevronLeft, ChevronRight, Flower2, Sparkles } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Flower2, Loader2, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,16 +13,16 @@ import {
   TEAM_SIZE_OPTIONS,
   YEARS_OPTIONS,
   emptyProfile,
-  loadProfile,
+  loadStoredProfile,
   saveProfile,
   type CompanyProfile,
 } from "@/lib/company-profile";
 
-const STEPS = [
-  { title: "Your company", caption: "Tell us who you are" },
-  { title: "What you decorate", caption: "Pick the work you take on" },
-  { title: "Your scale", caption: "Team size and experience" },
-];
+// For now the setup is a single step. The "What you decorate" and "Your scale" steps
+// below stay in the file; add them back here to bring them back:
+//   { title: "What you decorate", caption: "Pick the work you take on" },
+//   { title: "Your scale", caption: "Team size and experience" },
+const STEPS = [{ title: "Your company", caption: "Tell us who you are" }];
 
 function Pill({
   label,
@@ -53,7 +54,7 @@ function Pill({
 export function ProfileSetup() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState<CompanyProfile>(() => loadProfile() ?? emptyProfile);
+  const [form, setForm] = useState<CompanyProfile>(() => loadStoredProfile() ?? emptyProfile);
 
   const set = <K extends keyof CompanyProfile>(key: K, value: CompanyProfile[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -73,9 +74,24 @@ export function ProfileSetup() {
         ? form.services.length > 0 && form.eventTypes.length > 0
         : form.teamSize !== "" && form.yearsActive !== "";
 
-  const finish = () => {
-    saveProfile(form);
-    navigate({ to: "/company" });
+  const [saving, setSaving] = useState(false);
+
+  const finish = async () => {
+    setSaving(true);
+    try {
+      const ok = await saveProfile(form);
+      if (ok) {
+        toast.success("Company profile saved to database!");
+      } else {
+        toast.warning("Profile saved locally (database sync will retry).");
+      }
+    } catch (err) {
+      console.error("Save profile error:", err);
+      toast.error("Could not save to database.");
+    } finally {
+      setSaving(false);
+      navigate({ to: "/company" });
+    }
   };
 
   return (
@@ -95,7 +111,7 @@ export function ProfileSetup() {
           </div>
         </header>
 
-        <ol className="mt-8 grid grid-cols-3 gap-3">
+        <ol className={cn("mt-8 grid gap-3", STEPS.length > 1 ? "grid-cols-3" : "grid-cols-1")}>
           {STEPS.map((item, index) => (
             <li key={item.title}>
               <div
@@ -258,20 +274,32 @@ export function ProfileSetup() {
           )}
 
           <div className="mt-8 flex items-center justify-between gap-3">
-            <Button
-              variant="ghost"
-              onClick={() => setStep((s) => Math.max(0, s - 1))}
-              disabled={step === 0}
-            >
-              <ChevronLeft className="h-4 w-4" /> Back
-            </Button>
+            {STEPS.length > 1 ? (
+              <Button
+                variant="ghost"
+                onClick={() => setStep((s) => Math.max(0, s - 1))}
+                disabled={step === 0}
+              >
+                <ChevronLeft className="h-4 w-4" /> Back
+              </Button>
+            ) : (
+              <span />
+            )}
             {step < STEPS.length - 1 ? (
-              <Button onClick={() => setStep((s) => s + 1)} disabled={!canContinue}>
+              <Button onClick={() => setStep((s) => s + 1)} disabled={!canContinue || saving}>
                 Continue <ChevronRight className="h-4 w-4" />
               </Button>
             ) : (
-              <Button onClick={finish} disabled={!canContinue}>
-                <Sparkles className="h-4 w-4" /> Finish and open dashboard
+              <Button onClick={finish} disabled={!canContinue || saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" /> Finish and open dashboard
+                  </>
+                )}
               </Button>
             )}
           </div>

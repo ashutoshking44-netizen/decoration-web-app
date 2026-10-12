@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AddDecorationRouteImport } from './routes/add-decoration'
 import { Route as BookedClientsRouteImport } from './routes/booked-clients'
+import { Route as CompaniesRouteImport } from './routes/companies'
 import { Route as CompanyRouteImport } from './routes/company'
 import { Route as EnquireRouteImport } from './routes/enquire'
 import { Route as EnquiriesRouteImport } from './routes/enquiries'
@@ -34,6 +35,11 @@ const AddDecorationRoute = AddDecorationRouteImport.update({
 const BookedClientsRoute = BookedClientsRouteImport.update({
   id: '/booked-clients',
   path: '/booked-clients',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompaniesRoute = CompaniesRouteImport.update({
+  id: '/companies',
+  path: '/companies',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CompanyRoute = CompanyRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/add-decoration': typeof AddDecorationRoute
   '/booked-clients': typeof BookedClientsRoute
+  '/companies': typeof CompaniesRoute
   '/company': typeof CompanyRoute
   '/enquire': typeof EnquireRoute
   '/enquiries': typeof EnquiriesRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/add-decoration': typeof AddDecorationRoute
   '/booked-clients': typeof BookedClientsRoute
+  '/companies': typeof CompaniesRoute
   '/company': typeof CompanyRoute
   '/enquire': typeof EnquireRoute
   '/enquiries': typeof EnquiriesRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/add-decoration': typeof AddDecorationRoute
   '/booked-clients': typeof BookedClientsRoute
+  '/companies': typeof CompaniesRoute
   '/company': typeof CompanyRoute
   '/enquire': typeof EnquireRoute
   '/enquiries': typeof EnquiriesRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/'
     | '/add-decoration'
     | '/booked-clients'
+    | '/companies'
     | '/company'
     | '/enquire'
     | '/enquiries'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/'
     | '/add-decoration'
     | '/booked-clients'
+    | '/companies'
     | '/company'
     | '/enquire'
     | '/enquiries'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/'
     | '/add-decoration'
     | '/booked-clients'
+    | '/companies'
     | '/company'
     | '/enquire'
     | '/enquiries'
@@ -163,6 +175,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AddDecorationRoute: typeof AddDecorationRoute
   BookedClientsRoute: typeof BookedClientsRoute
+  CompaniesRoute: typeof CompaniesRoute
   CompanyRoute: typeof CompanyRoute
   EnquireRoute: typeof EnquireRoute
   EnquiriesRoute: typeof EnquiriesRoute
@@ -194,6 +207,13 @@ declare module '@tanstack/react-router' {
       path: '/booked-clients'
       fullPath: '/booked-clients'
       preLoaderRoute: typeof BookedClientsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/companies': {
+      id: '/companies'
+      path: '/companies'
+      fullPath: '/companies'
+      preLoaderRoute: typeof CompaniesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/company': {
@@ -259,6 +279,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AddDecorationRoute: AddDecorationRoute,
   BookedClientsRoute: BookedClientsRoute,
+  CompaniesRoute: CompaniesRoute,
   CompanyRoute: CompanyRoute,
   EnquireRoute: EnquireRoute,
   EnquiriesRoute: EnquiriesRoute,

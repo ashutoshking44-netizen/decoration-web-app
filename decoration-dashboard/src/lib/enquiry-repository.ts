@@ -425,6 +425,8 @@ class EnquiryRepository {
           client_name: e.client_name,
           phone: e.phone,
           whatsapp_number: e.whatsapp_number,
+          whatsappNumber: e.whatsappNumber || e.whatsapp_number,
+          whatsappSameAsPhone: e.whatsappSameAsPhone,
           email: e.email,
           location: e.location,
           source: e.source,
