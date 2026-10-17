@@ -9,9 +9,11 @@ This document outlines the monitoring and observability architecture for the Dec
 The application API exposes standard observability endpoints on port `4000` (or configured `API_PORT`):
 
 ### `GET /api/health`
+
 Returns system health, database statistics, and memory usage.
 
 **Example Response:**
+
 ```json
 {
   "status": "ok",
@@ -31,9 +33,11 @@ Returns system health, database statistics, and memory usage.
 ```
 
 ### `GET /api/metrics`
+
 Exposes Prometheus-formatted metrics for Prometheus scraping and Grafana dashboards.
 
 **Sample Metrics:**
+
 ```prometheus
 # HELP decoration_uptime_seconds Total uptime of the API server in seconds
 # TYPE decoration_uptime_seconds gauge
@@ -85,8 +89,9 @@ scrape_configs:
 ## 3. Grafana Dashboard Integration
 
 Once Prometheus is scraping the endpoint, you can visualize the following in Grafana:
-* **Uptime & Availability**: `decoration_uptime_seconds`
-* **Request Throughput (RPS)**: `rate(decoration_requests_total[1m])`
-* **Memory Utilization**: `decoration_memory_bytes{type="heapUsed"} / 1024 / 1024` (MB)
-* **Active Catalogue Items**: `decoration_items_total`
-* **Incoming Enquiries Growth**: `rate(decoration_enquiries_total[5m])`
+
+- **Uptime & Availability**: `decoration_uptime_seconds`
+- **Request Throughput (RPS)**: `rate(decoration_requests_total[1m])`
+- **Memory Utilization**: `decoration_memory_bytes{type="heapUsed"} / 1024 / 1024` (MB)
+- **Active Catalogue Items**: `decoration_items_total`
+- **Incoming Enquiries Growth**: `rate(decoration_enquiries_total[5m])`

@@ -4,22 +4,13 @@
     {
       "name": "api",
       "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "server/index.mjs"
-      ],
+      "runtimeArgs": ["server/index.mjs"],
       "port": 4000
     },
     {
       "name": "decoration-dashboard",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--",
-        "--port",
-        "5174",
-        "--strictPort"
-      ],
+      "runtimeArgs": ["run", "dev", "--", "--port", "5174", "--strictPort"],
       "port": 5174
     },
     {

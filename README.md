@@ -47,21 +47,20 @@ Sidebar item states: 3px rose left rule + faint rose background + rose text + fi
 Sidebar nav — build exactly this list, nothing else
 
 OVERVIEW
-  Home
-  Event Management        — subtitle: "Monthly Operations View"
+Home
+Event Management — subtitle: "Monthly Operations View"
 
 CLIENTS
-  All Clients
-  Booked Clients
-  My Team / Vendors
+All Clients
+Booked Clients
+My Team / Vendors
 
 FINANCE
-  Finance Manager
+Finance Manager
 
 WORKSPACE
-  Internal Notes
-  Settings
-
+Internal Notes
+Settings
 
 Do not add Xito Drive, YouTube, Video Edit Tracker, Photo Edit Tracker, Album & Pen Drive, or File Management — not as routes, not as nav items, not as disabled/greyed placeholders. If a nav group would end up empty because of this exclusion, remove the group entirely rather than rendering an empty header.
 
@@ -69,8 +68,7 @@ Do not add Xito Drive, YouTube, Video Edit Tracker, Photo Edit Tracker, Album & 
 
 White sticky header, bottom border + soft shadow, controls centered and wrapping on narrow widths, each item permission-filtered:
 
-Date Check   |   Pending Quotations   |   Payment Reminder   |   Enquiries & Quotation   |   🔔 Notifications (badge)   |   ⚡ Quick action (primary, rose-filled)
-
+Date Check | Pending Quotations | Payment Reminder | Enquiries & Quotation | 🔔 Notifications (badge) | ⚡ Quick action (primary, rose-filled)
 
 Do not include Gallery, Xito Drive, or YouTube buttons — those belong to the excluded photography modules.
 
@@ -176,7 +174,6 @@ Grep the finished code for these before calling the mission done; none should ex
 
 Xito Drive · YouTube · Video Edit Tracker · Photo Edit Tracker ·
 Album & Pen Drive · File Management · Xito Games
-
 
 9. Acceptance checklist
 

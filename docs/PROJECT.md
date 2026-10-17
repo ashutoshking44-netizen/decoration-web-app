@@ -5,6 +5,7 @@ A modern, high-performance web application tailored specifically for wedding and
 ---
 
 ## 📑 Table of Contents
+
 1. [Overview & Purpose](#-overview--purpose)
 2. [Key Capabilities & Features](#-key-capabilities--features)
 3. [Architecture & Technology Stack](#-architecture--technology-stack)
@@ -24,9 +25,9 @@ A modern, high-performance web application tailored specifically for wedding and
 
 Traditional event management suites are often generic or built exclusively for photography/venues. The **Decoration Portal** is customized around the real-world operational challenges of floral stylists, stage decorators, and mandap designers:
 
-- **Complex Multi-Event Ceremonies**: Weddings typically consist of multiple distinct functions (e.g., *Mehendi*, *Sangeet*, *Haldi*, *Baraat / Wedding Ceremony*, *Reception*), each requiring unique setups, dimensions, floral tiers, and structure rigging.
-- **Dynamic Decoration Design Catalog**: Maintain a rich visual portfolio of Stages, Mandaps, Entrance Gates, Backdrops, and Welcome Boards with live status controls (*Live*, *Paused*, *Draft*).
-- **Dual Nepali (Bikram Sambat) & Gregorian (AD) Dates**: Built-in support for Nepalese wedding dates (e.g., *18 Ashwin 2083 BS*) alongside standard Gregorian calendar dates.
+- **Complex Multi-Event Ceremonies**: Weddings typically consist of multiple distinct functions (e.g., _Mehendi_, _Sangeet_, _Haldi_, _Baraat / Wedding Ceremony_, _Reception_), each requiring unique setups, dimensions, floral tiers, and structure rigging.
+- **Dynamic Decoration Design Catalog**: Maintain a rich visual portfolio of Stages, Mandaps, Entrance Gates, Backdrops, and Welcome Boards with live status controls (_Live_, _Paused_, _Draft_).
+- **Dual Nepali (Bikram Sambat) & Gregorian (AD) Dates**: Built-in support for Nepalese wedding dates (e.g., _18 Ashwin 2083 BS_) alongside standard Gregorian calendar dates.
 - **Instant Client Quotation Dispatch**: Live client-facing breakdown, instant PDF export, and direct WhatsApp quotation links.
 
 ---
@@ -34,39 +35,44 @@ Traditional event management suites are often generic or built exclusively for p
 ## 🚀 Key Capabilities & Features
 
 ### 1. Executive Dashboard (`/company`)
+
 - **Key Metrics Overview**: Real-time summary cards for Enquiries (Today, Yesterday, Month), Booked Clients, and Revenue.
 - **Upcoming Functions**: Chronological list of confirmed events, assigned ceremonies, venues, and balance statuses.
 - **Quick Action Bar**: Fast navigation to Date Check, Pending Quotations, Reminders, and Quotation Creation.
 - **Recent Designs Showcase**: Interactive catalog cards with quick-toggle status pills and navigation to full inventory.
 
 ### 2. Multi-Step Quotation Generator (`/quotations/new`)
+
 - **Step 1: Client Information**: Client name, phone, WhatsApp number, inquiry source, notes.
 - **Step 2: Ceremony Schedule**: Add multiple ceremonies (Wedding, Reception, Sangeet, Haldi, etc.) with custom BS and AD dates, timings, and venue location.
 - **Step 3: Venue & Requirements**: Venue classification (Majestic Grand, Hotel Ballroom, Outdoor Lawn), setup access hours, and technical constraints.
 - **Step 4: Configure Event (Decoration Card Selection)**:
   - Multi-ceremony tabbed / sequential view.
-  - Search designs by title, tags, and categories (*All*, *Stage*, *Mandap*, *Entrance Gate*, *Backdrop*, *Welcome Board*).
-  - Filter by style (*With Flowers* vs. *Structure Only*) and sorting (*Price: Low to High*, *Price: High to Low*, *Name*).
+  - Search designs by title, tags, and categories (_All_, _Stage_, _Mandap_, _Entrance Gate_, _Backdrop_, _Welcome Board_).
+  - Filter by style (_With Flowers_ vs. _Structure Only_) and sorting (_Price: Low to High_, _Price: High to Low_, _Name_).
   - **In-Place Full-Screen "+ Upload Decoration"**: Allows decorators to upload brand-new setups on the fly without leaving the active quotation flow or losing state.
 - **Step 5–6: Add-ons, Pricing & Completion**:
   - Live cost breakdown, discounts, tax/VAT toggles, and payment milestones (Advance, Mid-payment, Final).
   - Automated WhatsApp quotation link generator with formatted message templates.
 
 ### 3. Unified "Add Decoration" Wizard (`/add-decoration` & Modal)
+
 A unified canonical 3-step design creator operating both as a dedicated route and as a full-screen overlay:
+
 - **Step 1: Upload Photo**: Drag-and-drop file upload, local device browser, and curated inspiration library presets. Multi-photo support with cover photo selection.
 - **Step 2: Basic Details**: Setup Title, Category, Applicable Events (Wedding, Reception, etc.), Main Structure selection (Truss, Floral Arch, Wooden Frame, Dome, etc.), and Styling tags.
 - **Step 3: Setup Details**:
   - Dimensions (Width $\times$ Height in feet).
-  - Floral Styling toggle (*With Flowers* with flower row breakdowns vs. *Structure Only*).
+  - Floral Styling toggle (_With Flowers_ with flower row breakdowns vs. _Structure Only_).
   - Base / Starting Price with live formatted `Rs.` preview.
   - Platform / Mandap options (Shape, Fabric Color, Height, Add-on price).
   - Overall lighting items and fixtures breakdown.
   - Description textarea & Live Setup Summary card.
 
 ### 4. Master Inventory & Catalog (`/inventory`)
+
 - Full grid and table views of all decoration items.
-- Filter by category, status (*Live*, *Paused*, *Draft*), and floral usage.
+- Filter by category, status (_Live_, _Paused_, _Draft_), and floral usage.
 - In-place status toggling via interactive dropdown pills.
 - Edit existing designs, duplicate setups, or remove outdated entries.
 
@@ -74,16 +80,16 @@ A unified canonical 3-step design creator operating both as a dedicated route an
 
 ## 🛠 Architecture & Technology Stack
 
-| Layer | Technology |
-| :--- | :--- |
-| **Framework** | [React 18](https://react.dev/) + [Vite](https://vitejs.dev/) |
-| **Language** | [TypeScript](https://www.typescriptlang.org/) (Strict typing with `exactOptionalPropertyTypes`) |
-| **Routing** | [@tanstack/react-router](https://tanstack.com/router) (Type-safe client-side routing) |
-| **Styling** | [Tailwind CSS](https://tailwindcss.com/) + Custom HSL Design Tokens |
-| **UI Primitives** | Radix UI (`@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, etc.) |
-| **Icons** | [Lucide React](https://lucide.dev/) |
-| **Notifications** | [Sonner](https://sonner.emilkowal.ski/) |
-| **Data Persistence**| Custom Zustand-style reactive store syncing with browser `localStorage` |
+| Layer                | Technology                                                                                      |
+| :------------------- | :---------------------------------------------------------------------------------------------- |
+| **Framework**        | [React 18](https://react.dev/) + [Vite](https://vitejs.dev/)                                    |
+| **Language**         | [TypeScript](https://www.typescriptlang.org/) (Strict typing with `exactOptionalPropertyTypes`) |
+| **Routing**          | [@tanstack/react-router](https://tanstack.com/router) (Type-safe client-side routing)           |
+| **Styling**          | [Tailwind CSS](https://tailwindcss.com/) + Custom HSL Design Tokens                             |
+| **UI Primitives**    | Radix UI (`@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, etc.)                      |
+| **Icons**            | [Lucide React](https://lucide.dev/)                                                             |
+| **Notifications**    | [Sonner](https://sonner.emilkowal.ski/)                                                         |
+| **Data Persistence** | Custom Zustand-style reactive store syncing with browser `localStorage`                         |
 
 ---
 
@@ -131,17 +137,20 @@ decoration-dashboard/
 ## 🔄 Core Workflows
 
 ### 1. Unified 3-Step Wizard Flow
+
 ```mermaid
 graph LR
     A[Upload Photo] -->|Drag & Drop / Library| B[Basic Details]
     B -->|Category, Name, Events, Structure| C[Setup Details]
     C -->|Dimensions, Florals, Pricing| D[Save to Master Catalog]
 ```
+
 - Available at `/add-decoration` for standalone catalog management.
 - Reused inside `MultiCeremonyCardSelector` as an edge-to-edge full-screen modal overlay via `AddDecorationModal`.
 - On completion in quotation mode, saves directly into `useDecorationSetupsStore`, closes without page refresh, and automatically selects the newly created setup for the active ceremony.
 
 ### 2. Quotation Creation Flow
+
 ```mermaid
 graph TD
     S1[1. Client Details] --> S2[2. Add Ceremonies]
@@ -194,10 +203,12 @@ The application uses reactive client stores backed by browser `localStorage`:
 ## 💻 Getting Started & Local Setup
 
 ### Prerequisites
+
 - [Node.js](https://nodejs.org/) (v18.0.0 or higher) or [Bun](https://bun.sh/)
 - `npm`, `pnpm`, or `bun` package manager
 
 ### Installation
+
 1. Navigate to the project root directory:
    ```bash
    cd "decoration-dashboard"
@@ -221,14 +232,14 @@ The application uses reactive client stores backed by browser `localStorage`:
 
 ## 📜 Available Scripts
 
-| Command | Action |
-| :--- | :--- |
-| `npm run dev` | Starts Vite dev server with hot module replacement (HMR) |
-| `npm run build` | Compiles TypeScript and creates optimized production bundle in `dist/` |
-| `npm run preview` | Locally previews production build |
-| `npx tsc --noEmit` | Runs strict TypeScript type checking across the entire project |
+| Command            | Action                                                                 |
+| :----------------- | :--------------------------------------------------------------------- |
+| `npm run dev`      | Starts Vite dev server with hot module replacement (HMR)               |
+| `npm run build`    | Compiles TypeScript and creates optimized production bundle in `dist/` |
+| `npm run preview`  | Locally previews production build                                      |
+| `npx tsc --noEmit` | Runs strict TypeScript type checking across the entire project         |
 | `share-online.bat` | Helper script to tunnel the local dev server for mobile/client testing |
 
 ---
 
-*Authored for the Decoration Business Suite — Designed for high-volume event production and client management.*
+_Authored for the Decoration Business Suite — Designed for high-volume event production and client management._
