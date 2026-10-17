@@ -1,219 +1,336 @@
-# Decoration Dashboard
+# Decoration Web App & Business Management Suite
 
-Antigravity build mission — Decoration Portal Home Dashboard (/company)
+A modern, full-stack enterprise web application for decoration businesses, event studios, and wedding planners. Built with **React 18**, **TanStack Start & TanStack Router**, **Tailwind CSS**, and **Supabase (PostgreSQL, Storage, Edge Functions)**.
 
-Paste this whole file into Antigravity's Manager surface as a single mission. It recreates the reference "Home" dashboard screenshot from the photography suite, rebranded and trimmed for the Decoration Portal, per the existing company-page-specification.md (§2.4, §4, §5.1, §10.1).
+---
 
-0. Objective
+## Table of Contents
 
-Build the /company Home / Dashboard screen for the Decoration Portal: same structural layout, spacing, and interaction model as the reference screenshot, but re-skinned for decoration (not photography) and with the six excluded modules never referenced anywhere — not in code, not in mock data, not in comments.
+1. [Features & Architecture](#features--architecture)
+2. [Prerequisites](#prerequisites)
+3. [Environment Configuration](#environment-configuration)
+4. [Database & Supabase Setup](#database--supabase-setup)
+   - [Option A: SQL Editor (Recommended)](#option-a-supabase-dashboard-sql-editor-recommended)
+   - [Option B: Supabase CLI Migrations](#option-b-supabase-cli-migration-push)
+   - [Deploying Edge Functions](#deploying-supabase-edge-functions)
+5. [Local Development & Running the App](#local-development--running-the-app)
+6. [Testing & Quality Assurance](#testing--quality-assurance)
+7. [Docker & Containerized Deployment](#docker--containerized-deployment)
+8. [Project Structure](#project-structure)
+9. [Security & Guardrails](#security--guardrails)
 
-1. Stack assumptions
+---
 
-React 18 + Vite + TypeScript + Tailwind (match the existing project's stack).
+## Features & Architecture
 
-Component primitives from the project's existing design-token setup — do not introduce a second UI kit.
+- **Multi-Company Management**: Isolated workflows, company picker, and customizable branding per tenant.
+- **Dynamic Decoration Catalog**: Manage decoration inventory, categories, specifications (structures, platforms, lighting, floral arrangements), and multi-photo galleries with automatic compression.
+- **Event Quotation Studio**: Step-by-step interactive quotation builder with itemized pricing, custom ceremony schedules (Bikram Sambat + Gregorian dates), and live PDF/WhatsApp proposal generation.
+- **Public Client Enquiry Portal**: Interactive `/enquire` form allowing clients to select dates, choose themes, and upload reference photos.
+- **Interactive Proposal Viewer**: Client-facing digital proposal page (`/proposal/:id`) featuring interactive breakdowns, payment QR codes, and terms acknowledgment.
+- **Offline-First & Auto-Healing**: Resilient local storage backup layer with automatic recovery, base64 sanitization, and Supabase cloud synchronization.
 
-Mock the data layer for now (typed fixtures/hooks), but shape it so it can be swapped for real Supabase queries later without touching the components.
+---
 
-2. Design tokens (define once, reuse everywhere — no hardcoded hex in page code)
+## Prerequisites
 
-Token Value --canvas #faf8f7 (operational surface: #f7f4f3) --surface #ffffff --ink #1a1614 --ink-secondary #6b5f5c --ink-muted #a39390 --rose hsl(350 80% 65%) --rose-dark hsl(350 80% 55%) --rose-light hsl(350 60% 95%) --rose-faint hsl(350 50% 97%) --gold-light hsl(38 80% 92%) --border-hairline rgba(180,150,140,.20) --border-strong rgba(180,150,140,.35)
+Ensure you have the following installed locally:
 
-Typography:
+- **Node.js**: v18.18+ or v20+
+- **Bun**: v1.1+ (Recommended for ultra-fast builds and tests) or **npm** / **pnpm**
+- **Supabase CLI** (optional, for CLI-based migrations and Edge Functions):
+  ```bash
+  # macOS (Homebrew)
+  brew install supabase/tap/supabase
 
-Brand/heading font: Cormorant Garamond (sidebar identity, dashboard headings).
+  # Windows / Linux / NPM
+  npm install -g supabase
+  ```
+- **Docker & Docker Compose** (optional, for containerized local runs)
 
-Body font: DM Sans.
+---
 
-Group labels/eyebrows: 9–10px uppercase, wide letter-spacing.
+## Environment Configuration
 
-Nav items: 13px. Supporting text: 10–13px. Page title: 24–30px. Numeric summaries: 22px+, bold, tabular figures.
+Create a `.env` file in the root directory by copying the template below:
 
-Spacing:
+```bash
+cp .env.example .env
+```
 
-Page padding 24px; vertical rhythm between dashboard blocks 32px; card gaps 16–24px; card radius 16px (compact controls 8–10px).
+### Required Variables (`.env`)
 
-Main dashboard column is centered and capped at max-w-5xl (~1024px) — do not let it stretch full-width like the operational tables do.
+```ini
+# Supabase Configuration
+VITE_SUPABASE_URL=https://<your-project-id>.supabase.co
+VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
 
-3. App shell (applies to every screen, not just Home)
+# Local API & Microservices
+VITE_API_URL=http://localhost:4000
+API_PORT=4000
 
-Fixed left sidebar: 240px expanded / 64px collapsed, main content offset matches, ~300ms animated transition on toggle.
+# Edge Functions (Optional for local testing)
+SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key>
+```
 
-Sidebar top-to-bottom: 56px "Back to Crew/Main App" row → company identity block (44px/36px circular logo, serif company name, "Business Suite" owner caption or "Staff" badge) → scrollable grouped nav → company switcher (only if user has >1 company) → footer "powered by Xito Events" (or the Decoration Portal's own footer text) → 24px circular collapse control on the sidebar's right edge.
+> [!CAUTION]
+> **Never commit your `.env` file** or expose your `SUPABASE_SERVICE_ROLE_KEY` on the client side. Ensure `.env` is listed in `.gitignore`.
 
-Sidebar item states: 3px rose left rule + faint rose background + rose text + filled rose icon tile + soft glow when active; neutral/off-white/hairline-border when inactive. 32×32px icon tiles, 10px radius.
+---
 
-Sidebar nav — build exactly this list, nothing else
+## Database & Supabase Setup
 
-OVERVIEW
-Home
-Event Management — subtitle: "Monthly Operations View"
+The application schema includes tables for `decorations`, `enquiries`, `company_profile`, and `booked_clients`, alongside storage buckets for high-resolution setup photos.
 
-CLIENTS
-All Clients
-Booked Clients
-My Team / Vendors
+### Option A: Supabase Dashboard SQL Editor (Recommended)
 
-FINANCE
-Finance Manager
+If connecting to an existing remote Supabase project:
 
-WORKSPACE
-Internal Notes
-Settings
+1. Open your [Supabase Dashboard](https://supabase.com/dashboard).
+2. Navigate to **SQL Editor** > **New Query**.
+3. Copy and execute [`supabase/migrations/20261012000000_init_schema.sql`](supabase/migrations/20261012000000_init_schema.sql):
+   - Creates the required tables, triggers, and PostgreSQL extensions.
+4. Open a second query and execute [`supabase/migrations/20261012000001_storage.sql`](supabase/migrations/20261012000001_storage.sql):
+   - Sets up public storage buckets (`decorations` and `enquiry-photos`) and access policies.
+5. *(Optional)* Run [`supabase/seed/seed.sql`](supabase/seed/seed.sql) to populate initial sample decorations and test companies.
 
-Do not add Xito Drive, YouTube, Video Edit Tracker, Photo Edit Tracker, Album & Pen Drive, or File Management — not as routes, not as nav items, not as disabled/greyed placeholders. If a nav group would end up empty because of this exclusion, remove the group entirely rather than rendering an empty header.
+---
 
-4. Sticky top action bar (Home only)
+### Option B: Supabase CLI Migration Push
 
-White sticky header, bottom border + soft shadow, controls centered and wrapping on narrow widths, each item permission-filtered:
+To link and push migrations using the CLI:
 
-Date Check | Pending Quotations | Payment Reminder | Enquiries & Quotation | 🔔 Notifications (badge) | ⚡ Quick action (primary, rose-filled)
+1. **Login to Supabase CLI**:
+   ```bash
+   supabase login
+   ```
 
-Do not include Gallery, Xito Drive, or YouTube buttons — those belong to the excluded photography modules.
+2. **Link your project**:
+   ```bash
+   supabase link --project-ref <your-project-ref>
+   ```
 
-5. Dashboard content, top to bottom
+3. **Push local migrations to the remote database**:
+   ```bash
+   supabase db push
+   ```
 
-All of this sits inside the centered max-w-5xl column.
+> [!TIP]
+> If your remote project contains legacy migration history from another repository, synchronize or repair your local migration history table with:
+> ```bash
+> supabase migration repair --status reverted <migration_version>
+> ```
 
-5.1 Company-details prompt (conditional)
+---
 
-A dismissible/one-line notice shown only when the company profile is missing required contact info. Hidden entirely otherwise — don't reserve empty space for it.
+### Deploying Supabase Edge Functions
 
-5.2 Module cards — 4 columns, equal width, 16–24px gaps
+The repository includes a dedicated Edge Function for processing photo uploads (`supabase/functions/upload-photo`):
 
-Card 1 — Enquiries and Quotation
+```bash
+# Deploy all functions to your linked Supabase project
+supabase functions deploy upload-photo --no-verify-jwt
+```
 
-Envelope icon in a soft rose tile.
+---
 
-Title "Enquiries and Quotation", one-line description "Manage new enquiries and quotations".
+## Local Development & Running the App
 
-Three-column stat row: Today / Yesterday / Month, bold large numbers.
+The project runs two services:
+1. **Frontend App** (Vite + TanStack Router): port `8080`
+2. **Background Data & Sync API** (`server/index.mjs`): port `4000`
 
-"Full breakdown" ghost button, bottom.
+### Step 1: Install Dependencies
 
-Card 2 — Booked Clients
+```bash
+# Using Bun (Recommended)
+bun install
 
-Calendar-check icon, rose tile.
+# Or using NPM
+npm install
+```
 
-Title "Booked Clients", "N confirmed bookings" subline (live count).
+### Step 2: Start Both Services Concurrently
 
-Secondary stat: "Avg booking time Nm" in muted rose text.
+```bash
+# Starts both the API Server (:4000) and Web App (:8080)
+npm run start:all
+```
 
-"Full breakdown" ghost button, bottom.
+Alternatively, run each service in separate terminal tabs:
 
-Card 3 — Inventory & Setup (replaces the photography suite's unrelated "Xito Games" card — this is the decoration-specific operational card called for in §5.1 of the spec)
+```bash
+# Terminal 1: Background API & Image Proxy
+npm run api
 
-Boxes/inventory icon, rose tile.
-
-Title "Inventory & Setup", one-line description, e.g. "Track reserved stock and setup status".
-
-Show a live conflict/attention count if any item has a reservation conflict this month (per §10.2); otherwise show total items reserved this month. A conflict state should visually stand out (amber/red), matching how the spec treats stock conflicts as being as visible as an unassigned critical role.
-
-Card 4 — BS/AD calendar widget
-
-Prev/next month controls, month + BS year header (e.g. "Bhadra 2083"), BS/AD toggle pill top-right.
-
-Standard week grid, Sun–Sat, current day ringed.
-
-Legend row at bottom: coloured dots for event types present that month (e.g. Function, Site Visit) + "Open full calendar →" link.
-
-Muted/greyed cells for adjacent-month overflow days.
-
-5.3 "Your Sections" fallback (conditional)
-
-Shown only to staff whose permitted sections aren't represented by the four cards above — a simple list/grid of the destinations they can reach. Omit entirely for owners/full-access staff.
-
-5.4 Team Required block (replaces "Crew Required")
-
-Header: icon tile + "Team Required" + "Month Year BS" subtitle.
-
-Month stepper (‹ Mangsir 2083 ›) + "View →" link that opens Event Management scoped to that month.
-
-Three stat tiles: Required / Assigned / Remaining, colour-coded (neutral / green-tinted / rose-tinted), large bold numbers.
-
-Role pill row — decoration roles, not photography ones. Use the §10.1 vocabulary map: Designer, Florist, Lighting, Fabric, Rigging, Setup, Teardown, Vendor — each pill shows assigned/required (e.g. DSG 0/1).
-
-Below that, a "Dates — date (roles required)" row listing BS day buckets with an open-count badge (e.g. 17 (2)); clicking opens a popover with the event(s) and unassigned roles for that date.
-
-Empty month: concise "No team requirements this month" message, same card footprint (don't collapse the block).
-
-5.5 Xito Search omnibar
-
-Full-width rounded rose-gradient bar, search icon in a filled rose tile on the left.
-
-Title "Xito Search" (serif) + eyebrow "SEARCH CLIENTS, FUNCTIONS & HANDLERS" (rebranded copy — "events" → "functions" per §10.1).
-
-Right-aligned shortcut hint pill (e.g. "SPACE SPACE").
-
-On click or the double-space shortcut: full-viewport dark translucent blurred scrim, centered panel ~1100px (max 95vw) with a large input, horizontally-scrollable recent-search chips, and live results showing avatar, client name, status, function count, matched field, and contact/location/handler metadata. Selecting a result logs it to "recent" and navigates to that client.
-
-5.6 Upcoming Events → Upcoming Functions
-
-Card header: icon + "Upcoming Functions" + "N event scheduled" subline + a pill button showing the next date (e.g. "Sep 16").
-
-List, capped ~400px tall with its own internal scroll.
-
-Each row: days-until/TODAY badge, client name + function type, location, Call + WhatsApp icon actions, expandable assignment detail, whole row navigates to the client/function workspace.
-
-6. States (every block above)
-
-Loading: skeleton placeholders that reserve the exact final dimensions — nothing should reflow when data arrives.
-
-Empty: icon + short copy + a next action where one makes sense.
-
-Restricted staff: render only the cards/actions their permissions allow; don't fabricate masked/asterisk data unless explicitly asked for later.
-
-7. Writes vs. reads
-
-Only inline team/resource assignment actions (from the Team Required popovers) write anything from this screen. The module cards, calendar, search, and Upcoming Functions list are read-only navigation surfaces — they must not mutate data.
-
-8. Explicit exclusions — verify at the end, not just at the start
-
-Grep the finished code for these before calling the mission done; none should exist anywhere in routes, nav config, mock data, or component names:
-
-Xito Drive · YouTube · Video Edit Tracker · Photo Edit Tracker ·
-Album & Pen Drive · File Management · Xito Games
-
-9. Acceptance checklist
-
-[ ] Sidebar renders exactly the 6-item, 4-group nav list in §3 — no extra groups, no empty groups.
-
-[ ] Top action bar shows exactly the 6 controls in §4, permission-filtered, no Gallery/Drive/YouTube.
-
-[ ] Four module cards render in a 4-column row on desktop, equal width, with the Inventory & Setup card replacing any photography/entertainment card.
-
-[ ] BS/AD toggle actually switches the calendar's displayed date system.
-
-[ ] Team Required role pills use the decoration vocabulary (Designer/Florist/Lighting/Fabric/Rigging/Setup/Teardown/Vendor), not PB/VB/PG/VG/EP/EV/ASST/IPHONE/DRONE/FPV.
-
-[ ] Xito Search opens on click and on double-space, and closes on Esc/outside click.
-
-[ ] Upcoming Functions list scrolls independently without pushing page content.
-
-[ ] Loading state preserves layout dimensions (screenshot it mid-fetch to confirm no layout shift).
-
-[ ] All colours trace back to the token table in §2 — zero hardcoded hex/HSL in component files.
-
-[ ] Full grep for the excluded-modules list in §8 returns nothing.
-
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/49fc0595-db28-439d-b90c-1f4646da8935).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+# Terminal 2: Vite Dev Server
 npm run dev
 ```
+
+Once started, open [http://localhost:8080](http://localhost:8080) in your browser.
+
+---
+
+## Testing & Quality Assurance
+
+The codebase includes an automated test suite verifying business logic, financial math, and persistence layers.
+
+```bash
+# Run unit & integration tests
+bun run test
+# Or with npm:
+npm run test
+
+# Run ESLint validation
+bun run lint
+# Or with npm:
+npm run lint
+
+# Check TypeScript types without emitting files
+bun x tsc --noEmit
+
+# Test production build
+bun run build
+```
+
+### Included Test Suites
+- **Enquiry Repository Verification**: Validates anti-corruption rollback, local-storage backup, and photo sanitization.
+- **Quotation Studio Layout Order**: Ensures client-facing quotation layouts adhere to strict pricing hierarchies.
+- **Pricing Breakdown & Mathematical Invariants**: Verifies component prices (Platform + Lighting + Floral + Furniture = Total).
+- **Formatters & Validators**: Validates Nepalese currency formats (`NPR`), Title Case strings, and phone number validation.
+
+---
+
+## Docker & Containerized Deployment
+
+Run the complete multi-tier application inside Docker:
+
+```bash
+# Build and run containers in detached mode
+docker compose -f docker/docker-compose.yml up --build -d
+
+# Check running status and health checks
+docker compose -f docker/docker-compose.yml ps
+
+# View live application logs
+docker compose -f docker/docker-compose.yml logs -f
+```
+
+---
+
+## Project Structure
+
+```text
+├── .agents/                    # Agent guardrail hooks & development constraints
+│   ├── hooks/
+│   │   ├── guard.py            # AST security guard enforcing safe execution & no secrets
+│   │   └── test_guard.py       # Guardrail test suite
+│   └── hooks.json              # Hook registration
+├── docker/                     # Containerization setup
+│   ├── Dockerfile              # Multi-stage production container build
+│   ├── docker-compose.yml      # Orchestration for web app, API & health monitoring
+│   └── README.md               # Container operations guide
+├── docs/                       # Comprehensive architectural & developer documentation
+│   ├── PROJECT_OVERVIEW.md     # In-depth architectural & codebase specifications
+│   ├── architecture.md         # Component hierarchy and design system
+│   ├── observability.md        # Prometheus metrics & monitoring setup
+│   ├── load-testing.md         # k6 load testing configurations & thresholds
+│   └── DECORATION-PROJECT.md   # Domain rules and product definitions
+├── public/                     # Static assets served at root
+│   ├── assets/
+│   │   └── app-logo.png        # Official high-res application logo
+│   ├── favicon.ico             # 64x64 multi-color binary favicon
+│   ├── favicon-16x16.png       # 16x16 PNG browser icon
+│   ├── favicon-32x32.png       # 32x32 PNG browser icon
+│   ├── apple-touch-icon.png    # 180x180 iOS home-screen icon
+│   └── robots.txt              # Search engine crawler policies
+├── scripts/                    # Automation, database migration & testing scripts
+│   ├── test-repository-logic.mjs      # Data corruption rollback & backup test
+│   ├── test-proposal-layout-order.mjs # Proposal hierarchy verification
+│   ├── test-quotation-empty-fix.mjs   # Quotation calculation integrity check
+│   ├── test-grand-royal-stage.mjs     # Catalog specification invariant tester
+│   └── load-test.js                   # k6 concurrent load testing script
+├── server/                     # Lightweight Node.js microservice API (port 4000)
+│   ├── index.mjs               # HTTP server with catalogue sync, metrics & upload proxy
+│   └── data/                   # Server-side persistent storage
+│       ├── db.json             # Local JSON database fallback & cache
+│       └── uploads/            # Sanitized image uploads
+├── src/
+│   ├── assets/                 # App assets & icon directories
+│   ├── components/
+│   │   ├── company/            # Business domain components
+│   │   │   ├── add-decoration-page.tsx       # 3-step decoration upload & specs wizard
+│   │   │   ├── booked-clients-page.tsx       # Confirmed client list & detail cards
+│   │   │   ├── booked-clients-calendar-view.tsx # Monthly function calendar view
+│   │   │   ├── client-enquiry-form.tsx       # Public enquiry submission workflow
+│   │   │   ├── company-dashboard.tsx         # Executive metrics, summaries & responsive calendar
+│   │   │   ├── company-picker.tsx            # Multi-company workspace switcher
+│   │   │   ├── decoration-catalog-card.tsx   # Catalog setup card with pricing & tags
+│   │   │   ├── decoration-details-modal.tsx  # Deep setup view with carousel & inclusions
+│   │   │   ├── decoration-proposal-view.tsx  # Interactive client proposal viewer
+│   │   │   ├── enquiries-triage-page.tsx     # Incoming quotation triage & pipeline
+│   │   │   ├── inventory-setup-page.tsx      # Inventory management & stock tracking
+│   │   │   ├── multi-ceremony-card-selector.tsx # Multi-day wedding event ceremony selector
+│   │   │   ├── photographer-gallery.tsx      # High-res photographer assets manager
+│   │   │   ├── profile-setup.tsx             # Studio profile & business onboarding wizard
+│   │   │   ├── quotation-studio-page.tsx     # Advanced interactive quotation builder
+│   │   │   └── share-enquiry-form-button.tsx # Quick link generator for WhatsApp
+│   │   └── ui/                 # Reusable Radix UI & design system primitives
+│   │       ├── button.tsx, dialog.tsx, sheet.tsx, popover.tsx, sonner.tsx, etc.
+│   ├── lib/                    # Core business logic, pricing math & state stores
+│   │   ├── clients.ts          # Booked clients store & balance trackers
+│   │   ├── company-profile.ts  # Studio profile store & TTL remote fetcher
+│   │   ├── company-scope.ts    # Multi-tenant scoping & client access isolation
+│   │   ├── current-company.ts  # Company context & symmetric alias matcher
+│   │   ├── decor-item-breakdown.ts # Pricing calculator (base + components)
+│   │   ├── decoration-setups.ts# Decoration catalogue state & offline sync
+│   │   ├── enquiries.ts        # Lead triage store & lifecycle state machine
+│   │   ├── enquiry-repository.ts # Anti-corruption persistence & rollback layer
+│   │   ├── event-schedule.ts   # BS / AD Bikram Sambat dual calendar converter
+│   │   ├── image-storage.ts    # Base64 image compression & cloud storage bridge
+│   │   ├── server-sync.ts      # Real-time background sync engine between app & API
+│   │   ├── supabase-service.ts # Typed PostgreSQL query client & error handling
+│   │   └── supabase.ts         # Supabase client instantiation
+│   ├── routes/                 # File-based routing (TanStack Router)
+│   │   ├── __root.tsx          # Root layout, meta tags, and font stylesheets
+│   │   ├── index.tsx           # Entry route redirecting to /company or /companies
+│   │   ├── company.tsx         # Main operations dashboard route
+│   │   ├── companies.tsx       # Company selection route
+│   │   ├── inventory.tsx       # Decoration catalog route
+│   │   ├── add-decoration.tsx  # Upload new decoration route
+│   │   ├── quotations.new.tsx  # Quotation creation studio route
+│   │   ├── proposal.$proposalId.tsx # Public proposal view route
+│   │   ├── enquiries.tsx       # Enquiry triage and pipeline route
+│   │   ├── enquire.tsx         # Client public enquiry form route
+│   │   ├── booked-clients.tsx  # Confirmed bookings & calendar route
+│   │   ├── settings.tsx        # Business settings route
+│   │   └── setup.tsx           # Initial onboarding route
+│   ├── utils/                  # Shared utility functions
+│   │   ├── cn.ts               # Tailwind CSS class merging helper
+│   │   ├── formatters.ts       # Nepalese currency (`NPR`) & Title Case formatters
+│   │   └── validators.ts       # Nepal phone numbers & email validation regex
+│   ├── styles.css              # Global design tokens, typography & animations
+│   └── main.tsx                # Client application bootstrap
+├── supabase/                   # Supabase backend definitions
+│   ├── config.toml             # Local Supabase studio & port configuration
+│   ├── functions/              # Edge Functions
+│   │   └── upload-photo/       # Deno serverless function for image uploads
+│   ├── migrations/             # PostgreSQL database migrations
+│   │   ├── 20261012000000_init_schema.sql # Core tables, indices, triggers
+│   │   └── 20261012000001_storage.sql     # Storage buckets and RLS policies
+│   ├── seed/                   # Database seed scripts
+│   │   └── seed.sql            # Sample decorations and company profiles
+│   └── tests/                  # Database schema validation tests
+│       └── database.test.sql   # SQL assertions for RLS and schema invariants
+└── tests/                      # Automated test suites
+    └── unit/
+        └── formatters.test.ts  # Currency, phone & string transformation tests
+```
+
+---
+
+## Security & Guardrails
+
+- **Environment Isolation**: API endpoints merge data by tenant ID (`companyId`), preventing cross-company data leakage or overwrites.
+- **Protected History**: Avoid force-pushing or rewriting published git history on active tracking branches.
+- **Fail-Safe Data Handling**: In-browser stores feature automated corrupted-data rollbacks and fallback modes when remote database services are unreachable.
