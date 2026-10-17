@@ -524,9 +524,11 @@ export function InventorySetupPage() {
 
         {/* Brand / Portal Identifier */}
         <div className="flex h-18 shrink-0 items-center gap-3 border-b border-sidebar-border px-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-rose font-display text-base font-bold">
-            <Sparkles className="size-5" />
-          </div>
+          <img
+            src="/assets/app-logo.png"
+            alt="Decorations Catalog"
+            className="size-10 shrink-0 rounded-xl object-cover shadow-soft border border-border"
+          />
           <div className="min-w-0">
             <div className="truncate font-display text-lg font-semibold leading-tight text-foreground">
               Decorations

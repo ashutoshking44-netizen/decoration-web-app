@@ -54,7 +54,12 @@ export function CompanyPicker() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center gap-6 px-5 py-10">
-      <div className="space-y-1 text-center">
+      <div className="space-y-2 text-center flex flex-col items-center">
+        <img
+          src="/assets/app-logo.png"
+          alt="Decoration Portal"
+          className="size-16 rounded-2xl object-cover shadow-soft border border-border/80 mb-1"
+        />
         <h1 className="text-3xl font-semibold">Choose your company</h1>
         <p className="text-sm text-muted-foreground">
           Search for your company and open it, or set up a new one.

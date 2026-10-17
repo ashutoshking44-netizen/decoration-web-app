@@ -273,7 +273,14 @@ function MobileHeader({ onOpen, company }: { onOpen: () => void; company: string
       <Button variant="ghost" size="icon" onClick={onOpen} aria-label="Open navigation">
         <Menu />
       </Button>
-      <span className="font-display text-xl font-semibold">{company}</span>
+      <div className="flex items-center gap-2">
+        <img
+          src="/assets/app-logo.png"
+          alt="Logo"
+          className="size-7 rounded-full object-cover border border-border shadow-xs"
+        />
+        <span className="font-display text-lg font-semibold truncate max-w-[200px]">{company}</span>
+      </div>
       <div className="size-9" />
     </div>
   );
@@ -327,9 +334,11 @@ function Sidebar({
               collapsed && "justify-center px-0",
             )}
           >
-            <div className="grid size-11 shrink-0 place-items-center rounded-full bg-primary font-display text-base font-bold text-primary-foreground shadow-rose">
-              {data.company.initials}
-            </div>
+            <img
+              src="/assets/app-logo.png"
+              alt="Company Logo"
+              className="size-11 shrink-0 rounded-full object-cover shadow-rose border border-border"
+            />
             {!collapsed && (
               <div className="min-w-0">
                 <div className="truncate font-display text-xl font-semibold leading-tight">

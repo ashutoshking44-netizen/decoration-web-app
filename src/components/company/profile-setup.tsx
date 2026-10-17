@@ -98,9 +98,11 @@ export function ProfileSetup() {
     <div className="min-h-screen bg-canvas px-6 py-10">
       <div className="mx-auto w-full max-w-3xl">
         <header className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-light text-primary">
-            <Flower2 className="h-5 w-5" />
-          </div>
+          <img
+            src="/assets/app-logo.png"
+            alt="Decoration Portal Logo"
+            className="h-11 w-11 rounded-full object-cover shadow-soft border border-border"
+          />
           <div>
             <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
               Decoration Portal

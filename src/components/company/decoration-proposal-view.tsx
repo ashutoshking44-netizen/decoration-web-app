@@ -2616,7 +2616,11 @@ export function DecorationProposalView({
         {/* 1. Hero */}
         <section className="dp-hero">
           <div className="dp-avatar">
-            {brandInitials}
+            <img
+              src="/assets/app-logo.png"
+              alt="Logo"
+              style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
+            />
             <span className="tick">✓</span>
           </div>
           {proposalSubtitle ? <div className="dp-brand">{proposalSubtitle}</div> : null}
