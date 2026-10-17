@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "node scripts/test-repository-logic.mjs && node scripts/test-proposal-layout-order.mjs && node scripts/test-quotation-empty-fix.mjs && node scripts/test-grand-royal-stage.mjs && bun src/lib/decor-item-breakdown.test.ts"
+    "test": "node scripts/test-repository-logic.mjs && node scripts/test-proposal-layout-order.mjs && node scripts/test-quotation-empty-fix.mjs && node scripts/test-grand-royal-stage.mjs && bun src/lib/decor-item-breakdown.test.ts",
+    "test:load": "k6 run scripts/load-test.js"
   },
   "overrides": {
     "rolldown": "1.2.1"

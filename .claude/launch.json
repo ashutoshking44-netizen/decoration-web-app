@@ -5,7 +5,7 @@
       "name": "api",
       "runtimeExecutable": "node",
       "runtimeArgs": [
-        "decoration-dashboard/server/index.mjs"
+        "server/index.mjs"
       ],
       "port": 4000
     },
@@ -13,8 +13,6 @@
       "name": "decoration-dashboard",
       "runtimeExecutable": "npm",
       "runtimeArgs": [
-        "--prefix",
-        "decoration-dashboard",
         "run",
         "dev",
         "--",

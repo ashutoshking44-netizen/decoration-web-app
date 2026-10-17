@@ -53,6 +53,12 @@ function loadDb() {
 /** @type {{ decorations: any[]; enquiries: any[] }} */
 let db = loadDb();
 
+const metrics = {
+  requestsTotal: 0,
+  requestsByEndpoint: {},
+  startTime: Date.now(),
+};
+
 function persist() {
   if (!db || typeof db !== "object") return;
   try {
@@ -474,7 +480,65 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (p === "/api/health") return send(res, 200, { ok: true });
+    metrics.requestsTotal++;
+    const endpointKey = `${req.method} ${p}`;
+    metrics.requestsByEndpoint[endpointKey] = (metrics.requestsByEndpoint[endpointKey] || 0) + 1;
+
+    // ── Health & Observability ─────────────────────────────────────────────
+    if (p === "/api/health") {
+      db = loadDb();
+      const mem = process.memoryUsage();
+      return send(res, 200, {
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        uptimeSeconds: Math.round(process.uptime()),
+        database: {
+          decorationsCount: db.decorations.length,
+          enquiriesCount: db.enquiries.length,
+          connected: true,
+        },
+        system: {
+          memoryRssBytes: mem.rss,
+          heapUsedBytes: mem.heapUsed,
+          heapTotalBytes: mem.heapTotal,
+        },
+      });
+    }
+
+    if (p === "/api/metrics") {
+      db = loadDb();
+      const mem = process.memoryUsage();
+      const lines = [
+        "# HELP decoration_uptime_seconds Total uptime of the API server in seconds",
+        "# TYPE decoration_uptime_seconds gauge",
+        `decoration_uptime_seconds ${Math.round(process.uptime())}`,
+        "",
+        "# HELP decoration_requests_total Total number of HTTP requests processed",
+        "# TYPE decoration_requests_total counter",
+        `decoration_requests_total ${metrics.requestsTotal}`,
+        "",
+        "# HELP decoration_items_total Total decorations currently stored in database",
+        "# TYPE decoration_items_total gauge",
+        `decoration_items_total ${db.decorations.length}`,
+        "",
+        "# HELP decoration_enquiries_total Total enquiries currently stored in database",
+        "# TYPE decoration_enquiries_total gauge",
+        `decoration_enquiries_total ${db.enquiries.length}`,
+        "",
+        "# HELP decoration_memory_bytes Process memory usage in bytes",
+        "# TYPE decoration_memory_bytes gauge",
+        `decoration_memory_bytes{type="rss"} ${mem.rss}`,
+        `decoration_memory_bytes{type="heapTotal"} ${mem.heapTotal}`,
+        `decoration_memory_bytes{type="heapUsed"} ${mem.heapUsed}`,
+      ];
+      for (const [key, count] of Object.entries(metrics.requestsByEndpoint)) {
+        const [method, route] = key.split(" ");
+        lines.push(`decoration_http_requests{method="${method}",path="${route}"} ${count}`);
+      }
+      res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" });
+      res.end(lines.join("\n") + "\n");
+      return;
+    }
 
     // ── Decorations ────────────────────────────────────────────────────────
     if (p === "/api/decorations" && req.method === "GET") {
