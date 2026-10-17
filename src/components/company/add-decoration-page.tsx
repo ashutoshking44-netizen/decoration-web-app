@@ -659,12 +659,14 @@ export function AddDecorationPage({
 
   // Photos state
   const [photos, setPhotos] = useState<UploadedPhoto[]>(() => {
-    if (initialSetup?.imageUrl) {
-      const all =
-        initialSetup.gallery && initialSetup.gallery.length > 0
-          ? initialSetup.gallery
-          : [initialSetup.imageUrl];
-      return all.map((url, idx) => ({
+    if (initialSetup?.imageUrl || (initialSetup?.gallery && initialSetup.gallery.length > 0)) {
+      const rawList = [
+        ...(initialSetup.imageUrl ? [initialSetup.imageUrl] : []),
+        ...(Array.isArray(initialSetup.gallery) ? initialSetup.gallery : []),
+      ];
+      // Deduplicate identical URLs
+      const uniqueUrls = Array.from(new Set(rawList.filter(Boolean)));
+      return uniqueUrls.map((url, idx) => ({
         id: `photo-${idx}`,
         url,
         name: `Photo ${idx + 1}`,
@@ -1130,7 +1132,16 @@ export function AddDecorationPage({
     const newPhotos = await Promise.all(readPromises);
 
     setPhotos((prev) => {
-      const updated = [...newPhotos, ...prev];
+      const existingUrls = new Set(prev.map((p) => p.url));
+      const existingNames = new Set(prev.map((p) => `${p.name}-${p.size}`));
+      const uniqueNew = newPhotos.filter(
+        (p) => !existingUrls.has(p.url) && !existingNames.has(`${p.name}-${p.size}`),
+      );
+      if (uniqueNew.length === 0 && newPhotos.length > 0) {
+        toast.info("Photo already added to setup.");
+        return prev;
+      }
+      const updated = [...uniqueNew, ...prev];
       setActivePhotoIndex(0);
       return updated;
     });
@@ -1228,16 +1239,19 @@ export function AddDecorationPage({
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragging(true);
   };
 
   const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragging(false);
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       processFiles(Array.from(e.dataTransfer.files));
@@ -2189,9 +2203,6 @@ export function AddDecorationPage({
                       />
                     ) : (
                       <div
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
                         className={cn(
                           "size-full flex flex-col items-center justify-center p-6 text-center transition-all",
                           isDragging ? "bg-rose-50/80 scale-[0.99]" : "bg-rose-50/20",

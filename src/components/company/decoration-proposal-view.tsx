@@ -773,6 +773,8 @@ export function DecorationProposalView({
 
       // 2. Build real gallery photos from selected element(s) only
       const photos: { src: string; cap: string; g: string }[] = [];
+      const seenSrcs = new Set<string>();
+
       items.forEach((item, itemIdx) => {
         const cat = findCatalogSetup(item.setupId || item.n);
         const itemImg =
@@ -782,7 +784,8 @@ export function DecorationProposalView({
           (c.items?.[itemIdx] as any)?.photo;
         const imgUrl = itemImg || c.setupImage || cat?.imageUrl || "";
         const gradient = `g${(itemIdx % 5) + 1}`;
-        if (imgUrl) {
+        if (imgUrl && !seenSrcs.has(imgUrl)) {
+          seenSrcs.add(imgUrl);
           photos.push({
             src: imgUrl,
             cap: item.n,
@@ -791,7 +794,8 @@ export function DecorationProposalView({
         }
         if (cat?.gallery && cat.gallery.length > 0) {
           cat.gallery.forEach((gSrc) => {
-            if (gSrc && gSrc !== imgUrl) {
+            if (gSrc && !seenSrcs.has(gSrc)) {
+              seenSrcs.add(gSrc);
               photos.push({
                 src: gSrc,
                 cap: item.n,

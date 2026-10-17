@@ -22,18 +22,20 @@ export function getCurrentCompanyId(): string {
 export function isMyCompanyId(id?: string | number | null): boolean {
   if (id === undefined || id === null || id === "") return false;
   const s = String(id).trim().toLowerCase();
-  const mine = getCurrentCompanyId();
+  const mine = getCurrentCompanyId().toLowerCase();
   const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (s === mine.toLowerCase() || norm(s) === norm(mine)) return true;
-  if (mine === "company-1") {
-    return (
-      s === "company_1" ||
-      s === "comp-1" ||
-      s === "1" ||
-      norm(s) === "company1" ||
-      norm(s) === "comp1"
-    );
+
+  if (s === mine || norm(s) === norm(mine)) return true;
+
+  // Extract digits for alias matching (e.g. comp-1 <-> company-1, comp-2 <-> company-2)
+  const getDigits = (v: string) => v.replace(/\D/g, "");
+  const mineDigits = getDigits(mine);
+  const sDigits = getDigits(s);
+
+  if (mineDigits && sDigits && mineDigits === sDigits) {
+    if (s.startsWith("comp") || s === mineDigits || s.startsWith("company")) return true;
   }
+
   return false;
 }
 

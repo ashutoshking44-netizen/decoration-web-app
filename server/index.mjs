@@ -544,9 +544,17 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/decorations" && req.method === "GET") {
       db = loadDb();
       const live = url.searchParams.get("status") === "live";
-      const list = live
+      const companyId = url.searchParams.get("companyId")?.trim().toLowerCase();
+      let list = live
         ? db.decorations.filter((d) => String(d.status).toLowerCase() === "live")
         : db.decorations;
+      if (companyId) {
+        list = list.filter(
+          (d) =>
+            String(d.companyId || "").toLowerCase() === companyId ||
+            String(d.vendor || "").toLowerCase() === companyId,
+        );
+      }
       return send(res, 200, { decorations: list });
     }
     if (p === "/api/decorations" && req.method === "PUT") {
@@ -554,7 +562,31 @@ const server = http.createServer(async (req, res) => {
       if (!Array.isArray(body?.decorations))
         return send(res, 400, { error: "decorations[] required" });
       db = loadDb();
-      db.decorations = externalizeImages(body.decorations);
+      const incoming = externalizeImages(body.decorations);
+
+      // Multi-tenant safe: merge incoming items by id / companyId so no company can overwrite or wipe another company's catalogue
+      const incomingIds = new Set(incoming.map((d) => d.id));
+      const incomingCompanies = new Set(
+        incoming
+          .map((d) =>
+            String(d.companyId || d.vendor || "")
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean),
+      );
+
+      // Keep decorations belonging to other companies or different IDs
+      const otherDecorations = db.decorations.filter((d) => {
+        if (incomingIds.has(d.id)) return false;
+        const comp = String(d.companyId || d.vendor || "")
+          .trim()
+          .toLowerCase();
+        if (comp && incomingCompanies.has(comp)) return false;
+        return true;
+      });
+
+      db.decorations = [...incoming, ...otherDecorations];
       persist();
       return send(res, 200, { ok: true, count: db.decorations.length });
     }

@@ -787,29 +787,6 @@ const adMonths = [
 function CalendarWidget({ days }: { days: CalendarDay[] }) {
   const [system, setSystem] = useState<"BS" | "AD">("BS");
   const [monthOffset, setMonthOffset] = useState(0);
-  const cardRef = useRef<HTMLElement>(null);
-  const [isNarrow, setIsNarrow] = useState(false);
-
-  useEffect(() => {
-    const el = cardRef.current;
-    if (!el) return;
-
-    const checkWidth = () => {
-      // General rule: card width under ~320px triggers compact responsive mode
-      setIsNarrow(el.offsetWidth < 325);
-    };
-
-    checkWidth();
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setIsNarrow(entry.contentRect.width < 290 || el.offsetWidth < 325);
-      }
-    });
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const getMonthTitle = () => {
     if (system === "BS") {
@@ -830,39 +807,28 @@ function CalendarWidget({ days }: { days: CalendarDay[] }) {
   };
 
   return (
-    <article
-      ref={cardRef}
-      className={cn(
-        "@container flex min-h-[318px] flex-col justify-between rounded-[20px] border border-[#E7DCD6] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] dark:border-border dark:bg-card transition-all",
-        isNarrow ? "p-4" : "p-[22px]",
-      )}
-    >
+    <article className="flex min-h-[318px] flex-col justify-between rounded-2xl border border-[#E7DCD6] bg-white p-4 sm:p-5 shadow-soft dark:border-border dark:bg-card">
       {/* Row 1: Inline navigation with Month/Year on the left, BS/AD toggle on the right */}
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={() => setMonthOffset((prev) => prev - 1)}
             aria-label="Previous month"
-            className="flex size-6 items-center justify-center rounded-full text-[#8A7B76] transition-colors hover:bg-[#F0E7E2]/60 hover:text-[#2B2320] focus-visible:outline-hidden shrink-0"
+            className="flex size-7 items-center justify-center rounded-full text-[#8A7B76] transition-colors hover:bg-[#F0E7E2]/60 hover:text-[#2B2320] focus-visible:outline-hidden shrink-0 cursor-pointer"
           >
-            <ChevronLeft className="size-3.5 stroke-[2.2]" />
+            <ChevronLeft className="size-4 stroke-[2.2]" />
           </button>
-          <h2
-            className={cn(
-              "font-display font-semibold leading-none text-[#2B2320] tracking-tight dark:text-foreground select-none px-0.5 whitespace-nowrap",
-              isNarrow ? "text-[16px]" : "text-[20px]",
-            )}
-          >
+          <h2 className="font-display font-semibold leading-none text-[#2B2320] tracking-tight dark:text-foreground select-none px-1 text-base sm:text-lg whitespace-nowrap">
             {getMonthTitle()}
           </h2>
           <button
             type="button"
             onClick={() => setMonthOffset((prev) => prev + 1)}
             aria-label="Next month"
-            className="flex size-6 items-center justify-center rounded-full text-[#8A7B76] transition-colors hover:bg-[#F0E7E2]/60 hover:text-[#2B2320] focus-visible:outline-hidden shrink-0"
+            className="flex size-7 items-center justify-center rounded-full text-[#8A7B76] transition-colors hover:bg-[#F0E7E2]/60 hover:text-[#2B2320] focus-visible:outline-hidden shrink-0 cursor-pointer"
           >
-            <ChevronRight className="size-3.5 stroke-[2.2]" />
+            <ChevronRight className="size-4 stroke-[2.2]" />
           </button>
         </div>
 
@@ -874,7 +840,7 @@ function CalendarWidget({ days }: { days: CalendarDay[] }) {
               type="button"
               onClick={() => setSystem(item)}
               className={cn(
-                "rounded-full px-2.5 py-0.5 text-[10px] font-bold transition-all select-none whitespace-nowrap",
+                "rounded-full px-2.5 py-0.5 text-[10px] font-bold transition-colors select-none whitespace-nowrap cursor-pointer",
                 system === item
                   ? "bg-[#E8546F] text-white shadow-xs"
                   : "bg-transparent text-[#8A7B76] hover:text-[#2B2320] dark:text-muted-foreground dark:hover:text-foreground",
@@ -888,29 +854,25 @@ function CalendarWidget({ days }: { days: CalendarDay[] }) {
 
       {/* Row 2 onward: Weekday header + Date grid */}
       <div className="mt-3">
-        <div className="grid grid-cols-7 text-center">
+        <div className="grid grid-cols-7 text-center mb-1">
           {["S", "M", "T", "W", "T", "F", "S"].map((day, i) => (
             <span
               key={`${day}-${i}`}
-              className={cn(
-                "font-bold text-[#B7A9A3] select-none py-1",
-                isNarrow ? "text-[10px]" : "text-[11px]",
-              )}
+              className="font-bold text-[#B7A9A3] select-none py-0.5 text-[10px] sm:text-[11px]"
             >
               {day}
             </span>
           ))}
         </div>
 
-        <div className="grid grid-cols-7 place-items-center">
+        <div className="grid grid-cols-7 place-items-center gap-y-0.5">
           {days.map((day, index) => {
             const dateVal = system === "BS" ? day.bs : day.ad;
             return (
               <div
                 key={index}
                 className={cn(
-                  "relative flex items-center justify-center rounded-full font-semibold tabular-nums select-none",
-                  isNarrow ? "size-[32px] text-[12.5px]" : "size-[38px] text-[13.5px]",
+                  "relative flex size-8 sm:size-[35px] items-center justify-center rounded-full font-semibold tabular-nums select-none text-xs sm:text-[13px]",
                   day.currentMonth
                     ? "text-[#2B2320] dark:text-foreground"
                     : "text-[#D8CBC5] dark:text-muted-foreground/35 font-normal",
@@ -933,12 +895,12 @@ function CalendarWidget({ days }: { days: CalendarDay[] }) {
       </div>
 
       {/* Legend row */}
-      <div className="mt-4 border-t border-[#F0E7E2] pt-[14px] text-[11.5px] dark:border-border flex items-center gap-3.5 whitespace-nowrap select-none">
-        <span className="inline-flex items-center gap-1.5 text-[11.5px] text-[#8A7B76] whitespace-nowrap">
+      <div className="mt-3 border-t border-[#F0E7E2] pt-3 text-[11px] sm:text-[11.5px] dark:border-border flex items-center gap-3.5 whitespace-nowrap select-none">
+        <span className="inline-flex items-center gap-1.5 text-[#8A7B76] whitespace-nowrap">
           <span className="size-1.5 rounded-full bg-[#C33A56] shrink-0" />
           Function
         </span>
-        <span className="inline-flex items-center gap-1.5 text-[11.5px] text-[#8A7B76] whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5 text-[#8A7B76] whitespace-nowrap">
           <span className="size-1.5 rounded-full bg-[#E8B14A] shrink-0" />
           Site Visit
         </span>

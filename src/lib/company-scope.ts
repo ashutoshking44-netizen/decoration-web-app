@@ -7,15 +7,31 @@ const normName = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
  * Enquiries with no company tag belong to the first company.
  */
 export function enquiryBelongsToCurrentCompany(e: Record<string, any>): boolean {
-  const match = String(e?.private_note || "").match(/\[Selected Company:\s*([^\]]+)\]/i);
+  const note = typeof e["private_note"] === "string" ? e["private_note"] : "";
+  const match = note.match(/\[Selected Company:\s*([^\]]+)\]/i);
   if (match?.[1]) {
     const sent = normName(match[1]);
     if (sent === normName(getCurrentCompanyName())) return true;
     // Requests sent without choosing a company went to the default company name.
     return getCurrentCompanyId() === "company-1" && sent === normName("Everest Events & Decor");
   }
-  const tagged = e?.company_id || e?.companyId || e?.owner_company_id || e?.ownerCompanyId;
+  const tagged = e["company_id"] || e["companyId"] || e["owner_company_id"] || e["ownerCompanyId"];
   if (tagged) return isMyCompanyId(tagged);
+
+  // Check if any event has requested decorations belonging to current company
+  const events = e["events"];
+  if (Array.isArray(events)) {
+    for (const ev of events) {
+      const decs = ev?.["requested_decorations"] || ev?.["decorations"];
+      if (Array.isArray(decs)) {
+        for (const d of decs) {
+          const comp = d?.["companyId"] || d?.["ownerCompanyId"] || d?.["company_id"];
+          if (comp && isMyCompanyId(comp)) return true;
+        }
+      }
+    }
+  }
+
   return isMyCompanyId("company-1");
 }
 
@@ -27,8 +43,8 @@ export function bookedClientBelongsToCurrentCompany(
   c: Record<string, any>,
   findEnquiry?: (id: string) => Record<string, any> | undefined,
 ): boolean {
-  if (c?.company_id) return isMyCompanyId(c.company_id);
-  const enquiryId = c?.enquiry_id || c?.id;
+  if (c["company_id"]) return isMyCompanyId(c["company_id"]);
+  const enquiryId = c["enquiry_id"] || c["id"];
   if (enquiryId && findEnquiry) {
     const enquiry = findEnquiry(String(enquiryId));
     if (enquiry) return enquiryBelongsToCurrentCompany(enquiry);
