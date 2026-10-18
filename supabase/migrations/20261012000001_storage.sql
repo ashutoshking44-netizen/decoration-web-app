@@ -20,3 +20,7 @@ create policy "decoration images anon update" on storage.objects
 -- Decorations belong to a company. Older schemas lack these columns, which made every save fail.
 alter table public.decorations add column if not exists company_id text;
 alter table public.decorations add column if not exists company_name text;
+
+-- Quotations/clients remember which enquiry and company they belong to (needed so a company sees its own quotations).
+alter table public.booked_clients add column if not exists enquiry_id text;
+alter table public.booked_clients add column if not exists company_id text;
