@@ -1,0 +1,84 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "extended-srgb:0.140,0.140,0.160,1.0",
+      "extended-srgb:0.070,0.070,0.080,1.0"
+    ]
+  },
+  "groups": [
+    {
+      "name": "House Architecture",
+      "layers": [
+        {
+          "name": "Roof & Wall Frame",
+          "image-name": "house_frame.svg",
+          "is-glass": true,
+          "fill": {
+            "automatic-gradient": "extended-srgb:0.92,0.72,0.35,1.0"
+          }
+        },
+        {
+          "name": "Window Panes",
+          "image-name": "windows.svg",
+          "is-glass": true,
+          "fill": {
+            "automatic-gradient": "extended-srgb:0.92,0.72,0.35,1.0"
+          }
+        },
+        {
+          "name": "Foundation Swoosh",
+          "image-name": "swoosh.svg",
+          "is-glass": true,
+          "fill": {
+            "automatic-gradient": "extended-srgb:0.92,0.72,0.35,1.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pendant Lamp",
+      "layers": [
+        {
+          "name": "Lamp & Glow",
+          "image-name": "lamp.svg",
+          "is-glass": true,
+          "fill": {
+            "automatic-gradient": "extended-srgb:0.98,0.85,0.45,1.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Floral Blossom",
+      "layers": [
+        {
+          "name": "Rose Petals",
+          "image-name": "petals.svg",
+          "is-glass": true,
+          "fill": {
+            "automatic-gradient": "extended-srgb:0.92,0.48,0.58,1.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Botanical Leaves",
+      "layers": [
+        {
+          "name": "Olive Green Leaves",
+          "image-name": "leaves.svg",
+          "is-glass": true,
+          "fill": {
+            "automatic-gradient": "extended-srgb:0.48,0.60,0.32,1.0"
+          }
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "iOS",
+      "macOS"
+    ]
+  }
+}
