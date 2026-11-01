@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { InventorySetupPage } from "@/components/company/inventory-setup-page";
-import { loadProfile } from "@/lib/company-profile";
+import { InventorySetupPage } from "@/features/inventory";
+import { loadProfile } from "@/features/company";
 
 export const Route = createFileRoute("/inventory")({
   ssr: false,
@@ -13,13 +13,13 @@ export const Route = createFileRoute("/inventory")({
   },
   head: () => ({
     meta: [
-      { title: "Decorations Catalog & Designs — Decoration Portal" },
+      { title: "Decorations Catalog & Designs - Decoration Portal" },
       {
         name: "description",
         content:
           "Browse, manage, and upload decoration setups, floral themes, dimensions, and template specifications.",
       },
-      { property: "og:title", content: "Decorations Catalog & Designs — Decoration Portal" },
+      { property: "og:title", content: "Decorations Catalog & Designs - Decoration Portal" },
       {
         property: "og:description",
         content: "Browse and configure decoration setups, floral themes, and custom event designs.",

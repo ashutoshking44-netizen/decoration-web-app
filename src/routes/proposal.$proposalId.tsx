@@ -1,18 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
-import { DecorationProposalView } from "@/components/company/decoration-proposal-view";
+import { DecorationProposalView } from "@/features/quotations";
 import {
   loadStoredBookedClients,
   convertEnquiryToBookedClient,
   healEmptyQuotationCeremonies,
   type BookedClient,
-} from "@/lib/clients";
-import { loadStoredEnquiries } from "@/lib/enquiries";
+} from "@/features/bookings";
+import { loadStoredEnquiries } from "@/features/enquiries";
 
 export const Route = createFileRoute("/proposal/$proposalId")({
   head: () => ({
     meta: [
-      { title: "Decoration Proposal — Live Client View" },
+      { title: "Decoration Proposal - Live Client View" },
       {
         name: "description",
         content:

@@ -1,7 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { AddDecorationPage } from "@/components/company/add-decoration-page";
-import { getActiveCompanyId } from "@/lib/company-profile";
-import { useDecorationSetupsStore, loadStoredSetups } from "@/lib/decoration-setups";
+import { AddDecorationPage, useDecorationSetupsStore, loadStoredSetups } from "@/features/inventory";
+import { getActiveCompanyId } from "@/features/company";
 import { useMemo } from "react";
 
 export type AddDecorationSearch = {
@@ -22,13 +21,13 @@ export const Route = createFileRoute("/add-decoration")({
   },
   head: () => ({
     meta: [
-      { title: "Decoration Setup — Decoration Portal" },
+      { title: "Decoration Setup - Decoration Portal" },
       {
         name: "description",
         content:
           "Configure and manage decoration setups, floral recipes, frame dimensions, and event specifications.",
       },
-      { property: "og:title", content: "Decoration Setup — Decoration Portal" },
+      { property: "og:title", content: "Decoration Setup - Decoration Portal" },
       {
         property: "og:description",
         content:

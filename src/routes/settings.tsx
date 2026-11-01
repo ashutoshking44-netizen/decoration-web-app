@@ -1,6 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { SettingsPage } from "@/components/company/settings-page";
-import { loadProfile } from "@/lib/company-profile";
+import { SettingsPage, loadProfile } from "@/features/company";
 
 export const Route = createFileRoute("/settings")({
   ssr: false,
@@ -9,7 +8,7 @@ export const Route = createFileRoute("/settings")({
   },
   head: () => ({
     meta: [
-      { title: "Settings — Decoration Portal" },
+      { title: "Settings - Decoration Portal" },
       { name: "description", content: "Studio settings: payment QR codes and more." },
     ],
   }),

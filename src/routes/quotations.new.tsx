@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { QuotationStudioPage } from "@/components/company/quotation-studio-page";
-import { getActiveCompanyId } from "@/lib/company-profile";
-import { useDecorationSetupsStore, loadStoredSetups } from "@/lib/decoration-setups";
+import { QuotationStudioPage } from "@/features/quotations";
+import { getActiveCompanyId } from "@/features/company";
+import { useDecorationSetupsStore, loadStoredSetups } from "@/features/inventory";
 import { useMemo } from "react";
 
 export type QuotationsNewSearch = {
@@ -37,13 +37,13 @@ export const Route = createFileRoute("/quotations/new")({
   },
   head: () => ({
     meta: [
-      { title: "Quotation Studio — Decoration Portal" },
+      { title: "Quotation Studio - Decoration Portal" },
       {
         name: "description",
         content:
           "Generate professional client-ready quotation proposals with floral recipes, add-ons, and pricing.",
       },
-      { property: "og:title", content: "Quotation Studio — Decoration Portal" },
+      { property: "og:title", content: "Quotation Studio - Decoration Portal" },
       {
         property: "og:description",
         content:
