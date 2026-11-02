@@ -1,26 +1,7 @@
-import React, { useState, useMemo } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { useState, useMemo } from "react";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  MessageCircle,
-  Copy,
-  ExternalLink,
-  Check,
-  Sparkles,
-  Calendar,
-  MapPin,
-  Flower2,
-  Share2,
-  CheckCircle2,
-  Send,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { MessageCircle, Copy, ExternalLink, Check, Sparkles, Flower2, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import type { BookedClient, ClientCeremonyItem } from "@/lib/clients";
 import { buildProposalMessage, proposalCeremonies, proposalTotal } from "@/lib/proposal-message";

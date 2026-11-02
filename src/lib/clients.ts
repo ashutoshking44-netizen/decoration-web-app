@@ -3,7 +3,6 @@ import {
   fetchBookedClientsFromSupabase,
   fetchBookedClientByIdFromSupabase,
   upsertBookedClientInSupabase,
-  deleteBookedClientFromSupabase,
   subscribeToBookedClientsRealtime,
 } from "./supabase-service";
 import type { DesignMatchAnswer } from "./design-match";

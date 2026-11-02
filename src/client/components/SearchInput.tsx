@@ -1,14 +1,19 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef } from "react";
 
 export interface SearchInputProps {
   value: string;
   onChange: (value: string) => void;
-  placeholder?: string;
-  ariaLabel?: string;
+  placeholder?: string | undefined;
+  ariaLabel?: string | undefined;
   id?: string;
-  className?: string;
+  className?: string | undefined;
   autoFocus?: boolean;
   onClear?: () => void;
+  /** Runs before the built-in key handling; call e.preventDefault() to skip it. */
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onFocus?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  /** Extra ARIA attributes for the <input> (e.g. combobox wiring for autocomplete). */
+  inputAriaProps?: React.AriaAttributes & { role?: React.AriaRole };
 }
 
 export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
@@ -16,25 +21,25 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
     {
       value,
       onChange,
-      placeholder = 'Search decorations, companies, or categories...',
-      ariaLabel = 'Search decorations, companies, or categories',
+      placeholder = "Search decorations, companies, or categories...",
+      ariaLabel = "Search decorations, companies, or categories",
       id,
-      className = '',
+      className = "",
       autoFocus = false,
       onClear,
+      onKeyDown,
+      onFocus,
+      inputAriaProps,
     },
-    ref
+    ref,
   ) => {
     const handleClear = () => {
-      onChange('');
+      onChange("");
       onClear?.();
     };
 
     return (
-      <div
-        className={`search-input-wrapper ${className}`.trim()}
-        role="search"
-      >
+      <div className={`search-input-wrapper ${className}`.trim()} role="search">
         <svg
           className="search-input-icon"
           width="18"
@@ -58,10 +63,14 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
           className="search-input-field"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onFocus={onFocus}
+          {...inputAriaProps}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') {
+            onKeyDown?.(e);
+            if (e.defaultPrevented) return;
+            if (e.key === "Escape") {
               handleClear();
-            } else if (e.key === 'Enter') {
+            } else if (e.key === "Enter") {
               e.preventDefault();
               (e.target as HTMLInputElement).blur();
             }
@@ -99,8 +108,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
         ) : null}
       </div>
     );
-  }
+  },
 );
 
-SearchInput.displayName = 'SearchInput';
-
+SearchInput.displayName = "SearchInput";

@@ -1,6 +1,6 @@
-import React from 'react';
-import { DecorationItem } from '../types';
-import { X, ShoppingBag, Trash2, PhoneCall } from 'lucide-react';
+import React from "react";
+import { DecorationItem } from "../types";
+import { X, ShoppingBag, Trash2, PhoneCall } from "lucide-react";
 
 interface QuotationModalProps {
   isOpen: boolean;
@@ -26,10 +26,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
       <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
@@ -40,8 +37,12 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
               <ShoppingBag className="w-5 h-5 text-[#ef5b78]" />
             </div>
             <div>
-              <h2 className="font-serif-cormorant text-2xl font-medium text-[#1d1a1c]">Your Quotation</h2>
-              <p className="text-xs text-[#80777d]">{items.length} item{items.length !== 1 ? 's' : ''} selected</p>
+              <h2 className="font-serif-cormorant text-2xl font-medium text-[#1d1a1c]">
+                Your Quotation
+              </h2>
+              <p className="text-xs text-[#80777d]">
+                {items.length} item{items.length !== 1 ? "s" : ""} selected
+              </p>
             </div>
           </div>
           <button
@@ -58,7 +59,9 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
             <div className="text-center py-12">
               <ShoppingBag className="w-12 h-12 text-[#e2d9dc] mx-auto mb-3" />
               <p className="text-[#80777d] text-sm">No items in your quotation yet.</p>
-              <p className="text-[#a49ca1] text-xs mt-1">Browse decorations and click "Add Quote".</p>
+              <p className="text-[#a49ca1] text-xs mt-1">
+                Browse decorations and click "Add Quote".
+              </p>
             </div>
           ) : (
             items.map((item) => (
@@ -73,9 +76,12 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
                 />
                 <div className="flex-1 min-w-0">
                   <h4 className="font-medium text-sm text-[#1d1a1c] line-clamp-1">{item.t}</h4>
-                  <p className="text-xs text-[#80777d] mt-0.5">{item.cat} · {item.vendor}</p>
+                  <p className="text-xs text-[#80777d] mt-0.5">
+                    {item.cat} · {item.vendor}
+                  </p>
                   <p className="text-sm font-semibold text-[#ef5b78] mt-1">
-                    Rs. {item.p.toLocaleString('en-IN')}{item.u || ''}
+                    Rs. {item.p.toLocaleString("en-IN")}
+                    {item.u || ""}
                   </p>
                 </div>
                 <button
@@ -98,7 +104,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
               <div className="text-right">
                 <span className="text-xs text-[#80777d] block">from</span>
                 <span className="font-serif-cormorant text-2xl font-medium text-[#1d1a1c]">
-                  Rs. {total.toLocaleString('en-IN')}
+                  Rs. {total.toLocaleString("en-IN")}
                 </span>
               </div>
             </div>
@@ -110,7 +116,10 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
                 Clear All
               </button>
               <button
-                onClick={() => { onClose(); onOpenInquiry(); }}
+                onClick={() => {
+                  onClose();
+                  onOpenInquiry();
+                }}
                 className="flex-1 py-2.5 rounded-full bg-[#ef5b78] hover:bg-[#e04766] text-white text-sm font-semibold shadow-md shadow-[#ef5b78]/25 transition flex items-center justify-center gap-2"
               >
                 <PhoneCall className="w-4 h-4" />
@@ -123,4 +132,3 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
     </div>
   );
 };
-

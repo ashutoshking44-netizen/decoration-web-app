@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { X, Send, PhoneCall, User, Calendar, MapPin, MessageSquare, Mail } from 'lucide-react';
-import { InquiryFormData } from '../types';
+import React, { useState } from "react";
+import { X, Send, PhoneCall, User, Calendar, MapPin, MessageSquare, Mail } from "lucide-react";
+import { InquiryFormData } from "../types";
 
 interface InquiryModalProps {
   isOpen: boolean;
@@ -14,12 +14,12 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
   preselectedItems = [],
 }) => {
   const [form, setForm] = useState<InquiryFormData>({
-    name: '',
-    phone: '',
-    email: '',
-    date: '',
-    location: '',
-    message: '',
+    name: "",
+    phone: "",
+    email: "",
+    date: "",
+    location: "",
+    message: "",
   });
   const [submitted, setSubmitted] = useState(false);
 
@@ -34,7 +34,7 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
     setSubmitted(true);
     setTimeout(() => {
       setSubmitted(false);
-      setForm({ name: '', phone: '', email: '', date: '', location: '', message: '' });
+      setForm({ name: "", phone: "", email: "", date: "", location: "", message: "" });
       onClose();
     }, 2000);
   };
@@ -49,8 +49,12 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b border-[#f0e9ea] bg-gradient-to-r from-[#fde7ed]/40 to-white flex items-start justify-between">
           <div>
-            <h2 className="font-serif-cormorant text-2xl font-medium text-[#1d1a1c]">Submit an Inquiry</h2>
-            <p className="text-xs text-[#80777d] mt-1">Tell us about your event and we'll get back to you shortly.</p>
+            <h2 className="font-serif-cormorant text-2xl font-medium text-[#1d1a1c]">
+              Submit an Inquiry
+            </h2>
+            <p className="text-xs text-[#80777d] mt-1">
+              Tell us about your event and we'll get back to you shortly.
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -67,15 +71,19 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
               <div className="w-16 h-16 rounded-full bg-green-50 border-2 border-green-200 flex items-center justify-center">
                 <Send className="w-8 h-8 text-green-500" />
               </div>
-              <h3 className="font-serif-cormorant text-2xl font-medium text-[#1d1a1c]">Inquiry Sent!</h3>
-              <p className="text-sm text-[#80777d]">Thank you! We'll contact you within 24 hours to discuss your event.</p>
+              <h3 className="font-serif-cormorant text-2xl font-medium text-[#1d1a1c]">
+                Inquiry Sent!
+              </h3>
+              <p className="text-sm text-[#80777d]">
+                Thank you! We'll contact you within 24 hours to discuss your event.
+              </p>
             </div>
           ) : (
             <form id="inquiry-form" onSubmit={handleSubmit} className="space-y-4">
               {preselectedItems.length > 0 && (
                 <div className="p-3 rounded-xl bg-[#fde7ed]/50 border border-[#ef5b78]/20 text-xs text-[#80777d]">
                   <span className="font-medium text-[#ef5b78]">Items of interest: </span>
-                  {preselectedItems.join(', ')}
+                  {preselectedItems.join(", ")}
                 </div>
               )}
 
@@ -83,7 +91,8 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
                 {/* Name */}
                 <div>
                   <label className="text-xs font-medium text-[#80777d] mb-1.5 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5" />Your Name *
+                    <User className="w-3.5 h-3.5" />
+                    Your Name *
                   </label>
                   <input
                     name="name"
@@ -98,7 +107,8 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
                 {/* Phone */}
                 <div>
                   <label className="text-xs font-medium text-[#80777d] mb-1.5 flex items-center gap-1.5">
-                    <PhoneCall className="w-3.5 h-3.5" />Phone Number *
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    Phone Number *
                   </label>
                   <input
                     name="phone"
@@ -113,7 +123,8 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
                 {/* Email */}
                 <div>
                   <label className="text-xs font-medium text-[#80777d] mb-1.5 flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5" />Email Address
+                    <Mail className="w-3.5 h-3.5" />
+                    Email Address
                   </label>
                   <input
                     name="email"
@@ -127,7 +138,8 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
                 {/* Date */}
                 <div>
                   <label className="text-xs font-medium text-[#80777d] mb-1.5 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5" />Event Date
+                    <Calendar className="w-3.5 h-3.5" />
+                    Event Date
                   </label>
                   <input
                     name="date"
@@ -142,7 +154,8 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
               {/* Location */}
               <div>
                 <label className="text-xs font-medium text-[#80777d] mb-1.5 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5" />Venue / Location
+                  <MapPin className="w-3.5 h-3.5" />
+                  Venue / Location
                 </label>
                 <input
                   name="location"
@@ -157,7 +170,8 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
               {/* Message */}
               <div>
                 <label className="text-xs font-medium text-[#80777d] mb-1.5 flex items-center gap-1.5">
-                  <MessageSquare className="w-3.5 h-3.5" />Additional Message
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  Additional Message
                 </label>
                 <textarea
                   name="message"
@@ -196,4 +210,3 @@ export const InquiryModal: React.FC<InquiryModalProps> = ({
     </div>
   );
 };
-

@@ -1,72 +1,31 @@
 import "./client.css";
-import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
-import { SearchInput } from './components/SearchInput';
-import { SendRequestPreview } from './components/SendRequestPreview';
-import { QuotationCompanyPicker } from './components/QuotationCompanyPicker';
-import { EventDatePicker } from './components/EventDatePicker';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
-import {
-  absoluteImage,
-  fetchLiveDecorations,
-  submitEnquiry,
-  type ApiDecoration,
-} from './api';
-import { CATEGORIES } from './data/decorations';
-import { getDecorationSlug } from './lib/slug';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { SearchAutocomplete } from "./components/SearchAutocomplete";
+import { ProfileButton } from "./components/ProfileButton";
+import { SendRequestPreview } from "./components/SendRequestPreview";
+import { FilterBottomSheet } from "./components/FilterBottomSheet";
+import { SortBottomSheet } from "./components/SortBottomSheet";
+import { FeaturedCarousel } from "./components/FeaturedCarousel";
+import { QuotationCompanyPicker } from "./components/QuotationCompanyPicker";
+import { PlanEventModal } from "./components/PlanEventModal";
+import { supabase, isSupabaseConfigured } from "./lib/supabase";
+import { absoluteImage, fetchLiveDecorations, submitEnquiry, type ApiDecoration } from "./api";
+import { CacheKeys, peekCache, subscribeCacheInvalidation } from "../lib/cache";
+import { CATEGORIES } from "./data/decorations";
+import { getDecorationSlug } from "./lib/slug";
+import { scrollChildIntoContainerX } from "./lib/scrollWithinContainer";
+import { CardImage } from "./components/CardImage";
+import { SKELETON_KEYS } from "./lib/loadingSkeleton";
 import {
   getStoredQuotation,
   saveStoredQuotation,
   subscribeQuotation,
   type PlannedEvent,
-} from './lib/quotationStorage';
+} from "./lib/quotationStorage";
 
-
-export interface DecorationSpecs {
-  summary: string;
-  structure: string;
-  dimensions: string;
-  events: string[];
-  floral: {
-    style: string;
-    varietyType: string;
-    flowers: { name: string; kind: string; colour?: string }[];
-    variety: string;
-    color: string;
-  };
-  /** Platform / lighting / furniture that come with the design (from the dashboard). */
-  addons?: { title: string; sub: string; price: number }[];
-  platform?: { name: string; size: string; color: string; price: number };
-  lighting?: { name: string; qty: string; price: number };
-  /** Core design price. Starting price = base + platform + lighting. */
-  basePrice: number;
-}
-
-export interface DecorationItem {
-  id: number;
-  /** Id of the decoration in the dashboard (absent for built-in samples). */
-  sid?: string;
-  /** All photos of the decoration (dashboard decorations only); `img` is the first. */
-  images?: string[];
-  /** Style / colour tags for the filters (dashboard decorations only). */
-  styles?: string[];
-  colors?: string[];
-  specs?: DecorationSpecs;
-  vendor?: string;
-  dimensions?: string;
-  inclusions?: string[];
-  priceUnit?: string;
-  ownerCompanyId?: string;
-  ownerCompanyName?: string;
-  cat: string;
-  t: string;
-  d: string;
-  p: number;
-  u?: string;
-  h?: number;
-  g: [string, string];
-  e: string;
-  img: string;
-}
+// Catalog types live in ./types (single source of truth); re-exported for existing importers.
+import type { DecorationItem, DecorationSpecs } from "./types";
+export type { DecorationItem, DecorationSpecs };
 
 interface PlanMeta {
   venue: string;
@@ -74,23 +33,21 @@ interface PlanMeta {
 
 export type { PlannedEvent };
 
-const CATS = CATEGORIES;
-
 const COS: Record<number, string> = {};
 
 export const getSpecs = (item: DecorationItem): DecorationSpecs => {
   if (item.specs) return item.specs;
   return {
-    summary: item.d || 'Elegant event decoration setup',
-    structure: item.cat || 'Standard',
-    dimensions: '16 × 12 ft',
-    events: ['Wedding', 'Reception', 'Engagement', 'Haldi', 'Mehndi', 'Sangeet'],
+    summary: item.d || "Elegant event decoration setup",
+    structure: item.cat || "Standard",
+    dimensions: "16 × 12 ft",
+    events: ["Wedding", "Reception", "Engagement", "Haldi", "Mehndi", "Sangeet"],
     floral: {
-      style: 'Floral Decor',
-      varietyType: 'Fresh',
-      flowers: [{ name: 'Rose', kind: 'Fresh', colour: 'Pink' }],
-      variety: 'Fresh',
-      color: 'Pink',
+      style: "Floral Decor",
+      varietyType: "Fresh",
+      flowers: [{ name: "Rose", kind: "Fresh", colour: "Pink" }],
+      variety: "Fresh",
+      color: "Pink",
     },
     basePrice: item.p,
   };
@@ -98,19 +55,19 @@ export const getSpecs = (item: DecorationItem): DecorationSpecs => {
 
 // ── Decorations uploaded from the dashboard ────────────────────────────────
 const API_CAT: Record<string, string> = {
-  'Entrance Gate': 'Entrance',
-  Backdrop: 'Backdrops',
-  'Photo Booth & Selfie Station': 'Photobooth',
+  "Entrance Gate": "Entrance",
+  Backdrop: "Backdrops",
+  "Photo Booth & Selfie Station": "Photobooth",
 };
 const CAT_EMOJI: Record<string, string> = {
-  Stage: '🛋️',
-  Entrance: '🌸',
-  Mandap: '🛕',
-  Backdrops: '📸',
-  'Welcome Board': '🪧',
-  Photobooth: '📷',
+  Stage: "🛋️",
+  Entrance: "🌸",
+  Mandap: "🛕",
+  Backdrops: "📸",
+  "Welcome Board": "🪧",
+  Photobooth: "📷",
 };
-const FALLBACK_G: [string, string] = ['#8a2b2b', '#f0b9a0'];
+const FALLBACK_G: [string, string] = ["#8a2b2b", "#f0b9a0"];
 
 /** Stable positive number for a dashboard id (the page keys items by number). */
 export const numericId = (sid: string) => {
@@ -120,42 +77,49 @@ export const numericId = (sid: string) => {
 };
 
 export const formatDimensions = (dims: unknown): string => {
-  if (!dims) return '';
-  if (typeof dims === 'string') return dims;
-  if (typeof dims === 'object' && dims !== null) {
-    const d = dims as { summary?: unknown; width_ft?: unknown; height_ft?: unknown; width?: unknown; height?: unknown };
+  if (!dims) return "";
+  if (typeof dims === "string") return dims;
+  if (typeof dims === "object" && dims !== null) {
+    const d = dims as {
+      summary?: unknown;
+      width_ft?: unknown;
+      height_ft?: unknown;
+      width?: unknown;
+      height?: unknown;
+    };
     if (d.summary) return String(d.summary);
     if (d.width_ft && d.height_ft) return `${d.width_ft} × ${d.height_ft} ft`;
     if (d.width && d.height) return `${d.width} × ${d.height} ft`;
   }
-  return '';
+  return "";
 };
 
 export const fromApi = (d: ApiDecoration): DecorationItem => {
   const id = numericId(d.id);
-  const ownerCompanyId = d.ownerCompanyId || 'company-1';
-  const ownerCompanyName = d.ownerCompanyName || d.vendor || 'Everest Events & Decor';
+  const ownerCompanyId = d.ownerCompanyId || "company-1";
+  const ownerCompanyName = d.ownerCompanyName || d.vendor || "Everest Events & Decor";
   COS[id] = ownerCompanyName;
   const formattedDims = formatDimensions(d.dimensions);
   const floralStyleStr =
-    typeof d.floral?.style === 'string' && d.floral.style
+    typeof d.floral?.style === "string" && d.floral.style
       ? d.floral.style
-      : typeof d.flowers === 'string' && d.flowers
-      ? d.flowers
-      : 'Floral Decor';
+      : typeof d.flowers === "string" && d.flowers
+        ? d.flowers
+        : "Floral Decor";
 
   const summary = [
     d.structure,
     formattedDims && `Dimensions: ${formattedDims}`,
     floralStyleStr && `Floral: ${floralStyleStr}`,
-    d.platform && d.platform !== 'None' && `Platform: ${d.platform}`,
+    d.platform && d.platform !== "None" && `Platform: ${d.platform}`,
   ]
     .filter(Boolean)
-    .join('. ');
-  const cat = API_CAT[d.category] || d.category || 'Stage';
-  const images = Array.isArray(d.images) && d.images.length > 0
-    ? d.images.map(absoluteImage).filter(Boolean)
-    : [];
+    .join(". ");
+  const cat = API_CAT[d.category] || d.category || "Stage";
+  const images =
+    Array.isArray(d.images) && d.images.length > 0
+      ? d.images.map(absoluteImage).filter(Boolean)
+      : [];
 
   return {
     id,
@@ -165,37 +129,33 @@ export const fromApi = (d: ApiDecoration): DecorationItem => {
     styles: Array.isArray(d.styles) ? d.styles : [],
     colors: Array.isArray(d.colors) ? d.colors : [],
     cat,
-    t: d.name || 'Untitled Decoration',
+    t: d.name || "Untitled Decoration",
     d: d.description || summary,
     p: Number(d.price) || 0,
     g: FALLBACK_G,
-    e: CAT_EMOJI[cat] || '✨',
-    img: images[0] || '',
+    e: CAT_EMOJI[cat] || "✨",
+    img: images[0] || "",
     images,
     specs: {
       summary,
-      structure: typeof d.structure === 'string' && d.structure ? d.structure : cat,
+      structure: typeof d.structure === "string" && d.structure ? d.structure : cat,
       dimensions: formattedDims,
-      events: Array.isArray(d.events) && d.events.length > 0 ? d.events : [
-        'Wedding',
-        'Reception',
-        'Engagement',
-        'Haldi',
-        'Mehndi',
-        'Sangeet',
-      ],
+      events:
+        Array.isArray(d.events) && d.events.length > 0
+          ? d.events
+          : ["Wedding", "Reception", "Engagement", "Haldi", "Mehndi", "Sangeet"],
       floral: {
         style: floralStyleStr,
-        varietyType: String(d.floral?.varietyType || ''),
+        varietyType: String(d.floral?.varietyType || ""),
         flowers: Array.isArray(d.floral?.flowers)
           ? d.floral.flowers.map((f: any) => ({
-              name: String(f.name || 'Flower'),
-              kind: String(f.kind || f.type || 'Fresh'),
-              colour: f.colour || f.color ? String(f.colour || f.color) : '',
+              name: String(f.name || "Flower"),
+              kind: String(f.kind || f.type || "Fresh"),
+              colour: f.colour || f.color ? String(f.colour || f.color) : "",
             }))
           : [],
-        variety: '',
-        color: '',
+        variety: "",
+        color: "",
       },
       ...(Array.isArray(d.addons) ? { addons: d.addons } : {}),
       basePrice: Number(d.price) || 0,
@@ -203,90 +163,43 @@ export const fromApi = (d: ApiDecoration): DecorationItem => {
   };
 };
 
-const EVENT_TYPES = [
-  'Wedding',
-  'Engagement',
-  'Mehendi',
-  'Haldi',
-  'Sangeet',
-  'Reception',
-  'Bratabandha / Pasni',
-  'Birthday',
-  'Corporate event',
-  'Other',
-] as const;
-
 const PRICE_RANGES = [
-  { id: 'u25', label: 'Under Rs. 25,000', min: 0, max: 25000 },
-  { id: '25-50', label: 'Rs. 25,000 - 50,000', min: 25000, max: 50000 },
-  { id: '50-100', label: 'Rs. 50,000 - 1,00,000', min: 50000, max: 100000 },
-  { id: 'o100', label: 'Above Rs. 1,00,000', min: 100000, max: Infinity },
+  { id: "u25", label: "Under Rs. 25,000", min: 0, max: 25000 },
+  { id: "25-50", label: "Rs. 25,000 - 50,000", min: 25000, max: 50000 },
+  { id: "50-100", label: "Rs. 50,000 - 1,00,000", min: 50000, max: 100000 },
+  { id: "o100", label: "Above Rs. 1,00,000", min: 100000, max: Infinity },
 ];
 
-const fmt = (n: number) => 'Rs. ' + n.toLocaleString('en-IN');
+const fmt = (n: number) => "Rs. " + n.toLocaleString("en-IN");
 /** Items without a fixed price (dashboard "Custom Quote") show as a custom quote. */
-const fmtItem = (n: number) => (n > 0 ? fmt(n) : 'Custom quote');
+const fmtItem = (n: number) => (n > 0 ? fmt(n) : "Custom quote");
 
 const formatDate = (dateStr: string) => {
-  if (!dateStr) return '';
+  if (!dateStr) return "";
   try {
-    const [y, m, d] = dateStr.split('-');
+    const [y, m, d] = dateStr.split("-");
     const date = new Date(+(y || 0), +(m || 1) - 1, +(d || 1));
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   } catch {
     return dateStr;
   }
 };
 
-const W = 'rgba(255,255,255,.9)';
-const W2 = 'rgba(255,255,255,.4)';
-const G = '#f8d58a';
-const R = '#ff9fb5';
-
-const fl = (x: number, y: number, r: number, c = R) =>
-  `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/><circle cx="${x}" cy="${y}" r="${r * 0.38}" fill="${G}"/>`;
-const dots = (a: number[][], r: number, c?: string) =>
-  a.map((q) => fl(q[0] ?? 0, q[1] ?? 0, r, c)).join('');
-const arc = (cx: number, cy: number, r: number, n: number, a0: number, a1: number) =>
-  Array.from({ length: n }, (_, k) => {
-    const a = ((a0 + ((a1 - a0) * k) / (n - 1)) * Math.PI) / 180;
-    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-  });
-const col = (x: number, y0: number, y1: number, n: number) =>
-  Array.from({ length: n }, (_, k) => [x, y0 + ((y1 - y0) * k) / (n - 1)]);
-const sofa = (x: number, y: number) =>
-  `<rect x="${x}" y="${y}" width="90" height="36" rx="8" fill="${W}"/><rect x="${x - 10}" y="${y + 6}" width="20" height="30" rx="6" fill="${W}"/><rect x="${x + 80}" y="${y + 6}" width="20" height="30" rx="6" fill="${W}"/>`;
-const wave = (y0: number) => {
-  let d = '',
-    b = '';
-  for (let x = 0; x <= 300; x += 25) {
-    const y = y0 + 22 * Math.sin(x / 47);
-    d += (x ? 'L' : 'M') + x + ' ' + y;
-    b += `<circle cx="${x}" cy="${y + 8}" r="13" fill="${G}" opacity=".25"/><circle cx="${x}" cy="${y + 8}" r="5.5" fill="${G}"/>`;
-  }
-  return `<path d="${d}" stroke="${W}" stroke-width="2" fill="none"/>${b}`;
-};
-
-const ART: Record<string, string> = {
-  Stage: `<rect x="30" y="300" width="240" height="20" rx="4" fill="${W2}"/><path d="M45 300V110h210v190" fill="none" stroke="${W}" stroke-width="6"/><path d="M45 110c28 40 28 110 10 190H45zM255 110c-28 40-28 110-10 190h10z" fill="${W2}"/>${dots(arc(150, 205, 78, 13, 180, 360), 9)}<path d="M150 110v34M132 144h36l-6 24h-24z" stroke="${G}" stroke-width="4" fill="${G}"/>${sofa(105, 262)}`,
-  Entrance: `<path d="M95 375L130 312h40l35 63z" fill="${W2}"/>${dots(arc(150, 195, 80, 15, 180, 360), 9)}${dots(col(70, 195, 312, 8), 8)}${dots(col(230, 195, 312, 8), 8)}${dots(arc(150, 195, 62, 10, 185, 355), 4, G)}<rect x="55" y="310" width="30" height="8" rx="3" fill="${W}"/><rect x="215" y="310" width="30" height="8" rx="3" fill="${W}"/>`,
-  Mandap: `<rect x="45" y="300" width="210" height="18" rx="4" fill="${W2}"/>${[70, 120, 180, 230].map((x) => `<rect x="${x - 5}" y="175" width="10" height="125" fill="${W}"/>`).join('')}<path d="M150 90L40 175h220z" fill="${W}"/><rect x="40" y="172" width="220" height="10" fill="${G}"/><path d="M70 185q25 36 50 0q30 36 60 0q25 36 50 0" fill="none" stroke="${R}" stroke-width="7"/>${dots(arc(150, 172, 100, 12, 200, 340), 5, R)}${sofa(105, 262)}`,
-  Table: `<path d="M80 235h140l22 95H58z" fill="${W}"/><ellipse cx="150" cy="235" rx="74" ry="18" fill="${W}"/><ellipse cx="150" cy="232" rx="50" ry="10" fill="${W2}"/><rect x="108" y="190" width="9" height="42" fill="${W}"/><rect x="183" y="190" width="9" height="42" fill="${W}"/><circle cx="112" cy="182" r="7" fill="${G}"/><circle cx="187" cy="182" r="7" fill="${G}"/>${fl(150, 200, 18)}${fl(130, 214, 12)}${fl(170, 214, 12)}<rect x="60" y="326" width="180" height="8" rx="3" fill="${W2}"/>`,
-  Floral: `${[[150, 125, 36], [98, 160, 30], [202, 160, 30], [124, 210, 27], [176, 210, 27], [150, 170, 30]].map((f) => `<path d="M150 300L${f[0]} ${f[1]}" stroke="${W}" stroke-width="4"/>`).join('')}${[[150, 125, 36], [98, 160, 30], [202, 160, 30], [124, 210, 27], [176, 210, 27], [150, 170, 30]].map((f, i) => fl(f[0] ?? 0, f[1] ?? 0, f[2] ?? 0, i % 2 ? R : '#ffc2d1')).join('')}<path d="M108 262h84l-22 80h-40z" fill="${W}"/>`,
-  Lighting: `<rect x="14" y="70" width="5" height="260" fill="${W}"/><rect x="281" y="70" width="5" height="260" fill="${W}"/>${wave(105)}${wave(185)}<rect x="40" y="305" width="220" height="14" rx="4" fill="${W2}"/><rect x="60" y="270" width="40" height="35" rx="4" fill="${W2}"/><rect x="200" y="270" width="40" height="35" rx="4" fill="${W2}"/>`,
-  Backdrops: `<rect x="45" y="65" width="210" height="240" rx="10" fill="${W2}"/><rect x="62" y="82" width="176" height="206" rx="6" fill="none" stroke="${W}" stroke-width="4"/>${dots([[62, 82], [238, 82], [62, 288], [238, 288], [84, 92], [216, 92], [100, 76], [200, 76]], 14)}${dots(arc(150, 92, 60, 8, 200, 340), 7, '#ffc2d1')}${sofa(105, 250)}<rect x="30" y="300" width="240" height="14" rx="4" fill="${W2}"/>`,
-};
-
 const ICONS: Record<string, string> = {
   All: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5" fill="currentColor"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" fill="currentColor"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" fill="currentColor"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" fill="currentColor"/>',
-  Stage: '<path d="M4 5h16M5 5v14M19 5v14M5 19h14M8 19v-4h8v4M8 15v-2h8v2M5 5c2 2 2 5 1 8M19 5c-2 2-2 5-1 8"/>',
+  Stage:
+    '<path d="M4 5h16M5 5v14M19 5v14M5 19h14M8 19v-4h8v4M8 15v-2h8v2M5 5c2 2 2 5 1 8M19 5c-2 2-2 5-1 8"/>',
   Entrance: '<path d="M5 20V11a7 7 0 0 1 14 0v9M9 20v-9a3 3 0 0 1 6 0v9M3 20h18"/>',
   Mandap: '<path d="M12 3v2M5 9l7-4 7 4M4 9h16M7 9v10M12 9v10M17 9v10M5 19h14M9 9v2M15 9v2"/>',
   Table: '<path d="M4 9l1.5-3h13L20 9M4 9h16M6 9v10M18 9v10M9 13h6"/>',
-  Floral: '<circle cx="12" cy="12" r="2"/><circle cx="12" cy="6.5" r="2.7"/><circle cx="17.2" cy="10.3" r="2.7"/><circle cx="15.2" cy="16.4" r="2.7"/><circle cx="8.8" cy="16.4" r="2.7"/><circle cx="6.8" cy="10.3" r="2.7"/>',
-  Lighting: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.9 10.6c.7.7 1 1.4 1 2.4h5.8c0-1 .3-1.7 1-2.4A6 6 0 0 0 12 3z"/>',
-  Backdrops: '<rect x="4.5" y="4" width="15" height="16" rx="1.5"/><rect x="8" y="7.5" width="8" height="9" rx=".8"/>',
-  'Welcome Board': '<path d="M19 3H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 12H5V5h14v10zM7 19l-2 3M17 19l2 3"/>',
+  Floral:
+    '<circle cx="12" cy="12" r="2"/><circle cx="12" cy="6.5" r="2.7"/><circle cx="17.2" cy="10.3" r="2.7"/><circle cx="15.2" cy="16.4" r="2.7"/><circle cx="8.8" cy="16.4" r="2.7"/><circle cx="6.8" cy="10.3" r="2.7"/>',
+  Lighting:
+    '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.9 10.6c.7.7 1 1.4 1 2.4h5.8c0-1 .3-1.7 1-2.4A6 6 0 0 0 12 3z"/>',
+  Backdrops:
+    '<rect x="4.5" y="4" width="15" height="16" rx="1.5"/><rect x="8" y="7.5" width="8" height="9" rx=".8"/>',
+  "Welcome Board":
+    '<path d="M19 3H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 12H5V5h14v10zM7 19l-2 3M17 19l2 3"/>',
   Photobooth: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/>',
 };
 
@@ -300,33 +213,42 @@ export default function ClientHomePage() {
     }
     return undefined;
   }, []);
-  const [cat, setCat] = useState<string>('All');
+  const [cat, setCat] = useState<string>("All");
   // Filters + sort for the catalogue
-  const [fCompany, setFCompany] = useState('');
-  const [fStyle, setFStyle] = useState('');
-  const [fColor, setFColor] = useState('');
-  const [fPrice, setFPrice] = useState('');
-  const [sortBy, setSortBy] = useState('featured');
+  // Company filter supports multiple selections (empty = all companies)
+  const [fCompanies, setFCompanies] = useState<string[]>([]);
+  const [fStyle, setFStyle] = useState("");
+  const [fColor, setFColor] = useState("");
+  const [fPrice, setFPrice] = useState("");
+  const [sortBy, setSortBy] = useState("featured");
   // Which photo of each decoration is showing (shared by the card and its popup)
   const [photoIdx, setPhotoIdx] = useState<Record<number, number>>({});
-  const [liked, setLiked] = useState<Set<number>>(new Set());
 
   // Decorations are loaded directly from Supabase with real-time sync
-  const [catalog, setCatalog] = useState<DecorationItem[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(true);
+  // Seed from the in-memory cache so returning to this page renders instantly (no skeleton)
+  const cachedCatalog = peekCache<ApiDecoration[]>(CacheKeys.liveDecorations());
+  const [catalog, setCatalog] = useState<DecorationItem[]>(() =>
+    cachedCatalog ? cachedCatalog.map(fromApi) : [],
+  );
+  const [catalogLoading, setCatalogLoading] = useState(!cachedCatalog);
 
   useEffect(() => {
     let cancelled = false;
-    const load = () => {
-      fetchLiveDecorations()
+    // Same array reference = served from cache unchanged → skip the re-render
+    let lastList: ApiDecoration[] | null = null;
+    const load = (force = false) => {
+      fetchLiveDecorations({ force })
         .then((list) => {
           if (!cancelled) {
-            setCatalog(list.map(fromApi));
+            if (list !== lastList) {
+              lastList = list;
+              setCatalog(list.map(fromApi));
+            }
             setCatalogLoading(false);
           }
         })
         .catch((err) => {
-          console.error('Failed to load decorations from Supabase:', err);
+          console.error("Failed to load decorations from Supabase:", err);
           if (!cancelled) {
             setCatalog([]);
             setCatalogLoading(false);
@@ -335,26 +257,36 @@ export default function ClientHomePage() {
     };
 
     void load();
-    const timer = setInterval(load, 30_000);
+    // Periodic check is served from the cache until it expires, so it only
+    // reaches the database once the cached catalog is stale.
+    const timer = setInterval(() => load(), 30_000);
+    // Re-load when the catalog cache is invalidated (a write here or in another tab)
+    const unsubscribeCache = subscribeCacheInvalidation((filter) => {
+      if (
+        "all" in filter ||
+        filter.type === undefined ||
+        filter.type === CacheKeys.liveDecorations().type
+      ) {
+        load();
+      }
+    });
 
     // Supabase Real-time synchronization
     let channel: any = null;
     if (isSupabaseConfigured) {
       channel = supabase
-        .channel('client-decorations-sync')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'decorations' },
-          () => {
-            void load();
-          }
-        )
+        .channel("client-decorations-sync")
+        .on("postgres_changes", { event: "*", schema: "public", table: "decorations" }, () => {
+          // A decoration changed in the database: bypass the cache and refresh it
+          void load(true);
+        })
         .subscribe();
     }
 
     return () => {
       cancelled = true;
       clearInterval(timer);
+      unsubscribeCache();
       if (channel) {
         void supabase.removeChannel(channel);
       }
@@ -363,22 +295,20 @@ export default function ClientHomePage() {
   // One shared categories list for chips, mobile swipe order, and catalog view
   const cats = CATEGORIES;
   useEffect(() => {
-    if (cat !== 'All' && !(cats as readonly string[]).includes(cat)) setCat('All');
+    if (cat !== "All" && !(cats as readonly string[]).includes(cat)) setCat("All");
   }, [cat]);
-
 
   // Phones: filters sit behind one "Filter & sort" button; the Plan button hides while scrolling down
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [fabHidden, setFabHidden] = useState(false);
 
   // Search & Filter state
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  // Search text only drives the suggestions dropdown; it does not filter the cards
+  const [searchQuery, setSearchQuery] = useState("");
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   const cardsAreaRef = useRef<HTMLDivElement>(null);
-  const [swipeDirection, setSwipeDirection] = useState<'next' | 'prev' | null>(null);
+  const [swipeDirection, setSwipeDirection] = useState<"next" | "prev" | null>(null);
   const swipeTimerRef = useRef<number | null>(null);
   const touchStartDataRef = useRef<{
     x: number;
@@ -388,33 +318,42 @@ export default function ClientHomePage() {
   } | null>(null);
   const lastSwipeTimeRef = useRef<number>(0);
 
-  // Debounce search query by 200ms
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
   const handleSearchChange = (val: string) => {
     setSearchQuery(val);
-    if (!val) {
-      setDebouncedSearchQuery('');
-    }
   };
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // ── Search suggestions (dropdown under the search box) ──
+  const getItemCompany = (item: DecorationItem) =>
+    COS[item.id] || item.vendor || "Everest Events & Decor";
+
+  /** Company suggestion picked: show that company's decorations in the grid. */
+  const handleSuggestCompany = (company: string) => {
+    setFCompanies([company]);
+    setCat("All");
+    // After the grid re-renders, bring it into view (respects sticky-bar scroll margin)
+    requestAnimationFrame(() => {
+      (cardsGridRef.current || cardsAreaRef.current)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
+
+  /** Decoration suggestion picked: open its detail page (same as clicking its card). */
+  const handleSuggestDecoration = (item: DecorationItem) => {
+    window.location.href = `/decor/${getDecorationSlug(item)}`;
+  };
+
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
-  const [filterSheetTab, setFilterSheetTab] = useState<'filter' | 'sort'>('filter');
-  const [stripActiveIdx, setStripActiveIdx] = useState(0);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [showSendRequestPreview, setShowSendRequestPreview] = useState(false);
 
   useEffect(() => {
     (window as any).__openSendRequestPreview = () => setShowSendRequestPreview(true);
     (window as any).__closeSendRequestPreview = () => setShowSendRequestPreview(false);
     if (
-      window.location.search.includes('preview=send') ||
-      window.location.hash === '#preview-send'
+      window.location.search.includes("preview=send") ||
+      window.location.hash === "#preview-send"
     ) {
       setShowSendRequestPreview(true);
     }
@@ -427,19 +366,19 @@ export default function ClientHomePage() {
       setFabHidden(y > last && y > 200);
       last = y;
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const [submitError, setSubmitError] = useState<string>('');
+  const [submitError, setSubmitError] = useState<string>("");
   const [isSending, setIsSending] = useState(false);
   const sendingRef = useRef(false);
-  const submissionKeyRef = useRef('');
+  const submissionKeyRef = useRef("");
 
   // Contact form fields, mirroring & validation state
-  const [contactName, setContactName] = useState<string>('');
-  const [contactPhone, setContactPhone] = useState<string>('');
-  const [contactWhatsapp, setContactWhatsapp] = useState<string>('');
+  const [contactName, setContactName] = useState<string>("");
+  const [contactPhone, setContactPhone] = useState<string>("");
+  const [contactWhatsapp, setContactWhatsapp] = useState<string>("");
   const [whatsappSameAsPhone, setWhatsappSameAsPhone] = useState<boolean>(true);
   const [phoneTouched, setPhoneTouched] = useState<boolean>(false);
   const [whatsappTouched, setWhatsappTouched] = useState<boolean>(false);
@@ -448,20 +387,20 @@ export default function ClientHomePage() {
     const trimmed = val.trim();
     if (!trimmed) return false;
     if (!/^\+?[0-9]+$/.test(trimmed)) return false;
-    const digits = trimmed.startsWith('+') ? trimmed.slice(1) : trimmed;
+    const digits = trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
     if (digits.length === 10) return true;
-    if (digits.length === 13 && digits.startsWith('977')) return true;
+    if (digits.length === 13 && digits.startsWith("977")) return true;
     return false;
   };
 
   const getPhoneError = (val: string, label: string): string => {
     const trimmed = val.trim();
     if (!trimmed) return `${label} is required`;
-    if (!/^\+?[0-9]+$/.test(trimmed)) return 'Digits only (leading + allowed)';
-    const digits = trimmed.startsWith('+') ? trimmed.slice(1) : trimmed;
-    if (digits.length === 10) return '';
-    if (digits.length === 13 && digits.startsWith('977')) return '';
-    return 'Enter a valid 10-digit number or +977 format';
+    if (!/^\+?[0-9]+$/.test(trimmed)) return "Digits only (leading + allowed)";
+    const digits = trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
+    if (digits.length === 10) return "";
+    if (digits.length === 13 && digits.startsWith("977")) return "";
+    return "Enter a valid 10-digit number or +977 format";
   };
 
   const handlePhoneChange = (val: string) => {
@@ -479,20 +418,26 @@ export default function ClientHomePage() {
   };
 
   const resetContactForm = () => {
-    setContactName('');
-    setContactPhone('');
-    setContactWhatsapp('');
+    setContactName("");
+    setContactPhone("");
+    setContactWhatsapp("");
     setWhatsappSameAsPhone(true);
     setPhoneTouched(false);
     setWhatsappTouched(false);
-    setSubmitError('');
+    setSubmitError("");
   };
 
   // Plan state (synchronized with localStorage via quotationStorage)
   const initialQuotation = useMemo(() => getStoredQuotation(), []);
-  const [plannedEvents, setPlannedEvents] = useState<PlannedEvent[]>(initialQuotation.plannedEvents);
-  const [activeEventName, setActiveEventName] = useState<string | null>(initialQuotation.activeEventName);
-  const [eventQuotes, setEventQuotes] = useState<Record<string, number[]>>(initialQuotation.eventQuotes);
+  const [plannedEvents, setPlannedEvents] = useState<PlannedEvent[]>(
+    initialQuotation.plannedEvents,
+  );
+  const [activeEventName, setActiveEventName] = useState<string | null>(
+    initialQuotation.activeEventName,
+  );
+  const [eventQuotes, setEventQuotes] = useState<Record<string, number[]>>(
+    initialQuotation.eventQuotes,
+  );
   const shoppingEventsRef = useRef<HTMLDivElement>(null);
   const stickyShoppingEventsRef = useRef<HTMLDivElement>(null);
 
@@ -524,14 +469,9 @@ export default function ClientHomePage() {
     if (!activeEventName) return;
     [shoppingEventsRef.current, stickyShoppingEventsRef.current].forEach((container) => {
       if (!container) return;
-      const activeEl = container.querySelector<HTMLElement>('.event-pill.active');
-      if (activeEl) {
-        activeEl.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'nearest',
-        });
-      }
+      const activeEl = container.querySelector<HTMLElement>(".event-pill.active");
+      // Scroll only the pill row horizontally; never move the page vertically
+      scrollChildIntoContainerX(container, activeEl, { align: "nearest" });
     });
   }, [activeEventName, plannedEvents]);
 
@@ -555,16 +495,13 @@ export default function ClientHomePage() {
   }, []);
 
   const [planMeta, setPlanMeta] = useState<PlanMeta>({
-    venue: '',
+    venue: "",
   });
 
-  // Form inputs for Plan popup
-  const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
-  const [eventDates, setEventDates] = useState<Record<string, string>>({});
-  const [eventVenues, setEventVenues] = useState<Record<string, string>>({});
-  // 0 = choose event types, 1..n = date & venue for each chosen event
-  const [planStep, setPlanStep] = useState<number>(0);
-  const [planError, setPlanError] = useState<string>('');
+  // Plan popup (form state lives in <PlanEventModal>)
+  const [planOpen, setPlanOpen] = useState(false);
+  const planOpenRef = useRef(false);
+  planOpenRef.current = planOpen;
   const [pendingItemId, setPendingItemId] = useState<number | null>(null);
 
   // Contact modal state
@@ -574,9 +511,6 @@ export default function ClientHomePage() {
   const [, setFullSubmission] = useState<Record<string, unknown> | null>(null);
 
   // Dialog references
-  const planDialogRef = useRef<HTMLDialogElement>(null);
-  const stripRef = useRef<HTMLDivElement>(null);
-  const stripPaused = useRef(false);
   const detailDialogRef = useRef<HTMLDialogElement>(null);
   const [detailItem, setDetailItem] = useState<DecorationItem | null>(null);
   const reviewDialogRef = useRef<HTMLDialogElement>(null);
@@ -587,8 +521,8 @@ export default function ClientHomePage() {
   // Auto-open review modal if navigated with #review or review=1
   useEffect(() => {
     if (
-      typeof window !== 'undefined' &&
-      (window.location.search.includes('review=1') || window.location.hash === '#review')
+      typeof window !== "undefined" &&
+      (window.location.search.includes("review=1") || window.location.hash === "#review")
     ) {
       setTimeout(() => {
         reviewDialogRef.current?.showModal();
@@ -618,9 +552,9 @@ export default function ClientHomePage() {
       },
       {
         root: null,
-        rootMargin: '0px',
+        rootMargin: "0px",
         threshold: 0,
-      }
+      },
     );
 
     observer.observe(sentinel);
@@ -635,8 +569,8 @@ export default function ClientHomePage() {
       if (chipsBarRef.current) {
         const h = chipsBarRef.current.offsetHeight;
         if (h > 0) {
-          document.documentElement.style.setProperty('--sticky-h', `${h}px`);
-          document.documentElement.style.setProperty('--chips-h', `${h}px`);
+          document.documentElement.style.setProperty("--sticky-h", `${h}px`);
+          document.documentElement.style.setProperty("--chips-h", `${h}px`);
         }
       }
     };
@@ -644,27 +578,27 @@ export default function ClientHomePage() {
     updateStickyH();
 
     let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined' && chipsBarRef.current) {
+    if (typeof ResizeObserver !== "undefined" && chipsBarRef.current) {
       resizeObserver = new ResizeObserver(() => {
         updateStickyH();
       });
       resizeObserver.observe(chipsBarRef.current);
     }
 
-    window.addEventListener('resize', updateStickyH);
+    window.addEventListener("resize", updateStickyH);
     return () => {
-      window.removeEventListener('resize', updateStickyH);
+      window.removeEventListener("resize", updateStickyH);
       resizeObserver?.disconnect();
     };
   }, [plannedEvents.length]);
 
-  // Auto-scroll active chip into view horizontally whenever category changes on mobile
+  // Auto-scroll active chip into view horizontally whenever category changes on mobile.
+  // Only the chips row scrolls; the page itself must never move.
   useEffect(() => {
     if (window.innerWidth <= 768) {
-      const chipEl = chipBtnRefs.current[cat];
-      if (chipEl) {
-        chipEl.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-      }
+      scrollChildIntoContainerX(chipsScrollRef.current, chipBtnRefs.current[cat], {
+        align: "center",
+      });
     }
   }, [cat]);
 
@@ -672,72 +606,43 @@ export default function ClientHomePage() {
   catRef.current = cat;
   const catsRef = useRef(cats);
   catsRef.current = cats;
-  const filterSheetOpenRef = useRef(filterSheetOpen);
-  filterSheetOpenRef.current = filterSheetOpen;
-  const mobileMenuOpenRef = useRef(mobileMenuOpen);
-  mobileMenuOpenRef.current = mobileMenuOpen;
+  const filterSheetOpenRef = useRef(filterSheetOpen || sortSheetOpen);
+  filterSheetOpenRef.current = filterSheetOpen || sortSheetOpen;
 
   const handleSelectCat = (category: string) => {
+    // Chip-row scrolling and grid alignment are handled by the effects that run
+    // after the new category has rendered, so the page is never scrolled twice.
     setCat(category);
-
-    if (window.innerWidth <= 768) {
-      // 1. Auto-scroll only the chips row horizontally, never vertically
-      const chipEl = chipBtnRefs.current[category];
-      if (chipEl) {
-        chipEl.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-      }
-
-      // 2. If chips are currently stuck, align top of grid just below pinned bar
-      const isStuckNow =
-        isChipsStuck ||
-        (chipsSentinelRef.current ? chipsSentinelRef.current.getBoundingClientRect().top <= 2 : false);
-
-      if (isStuckNow) {
-        const bar = chipsBarRef.current || document.querySelector<HTMLElement>('.chips-sticky');
-        const grid = cardsGridRef.current || document.querySelector<HTMLElement>('.cards-grid');
-        const targetEl =
-          grid && grid.style.display !== 'none'
-            ? grid
-            : cardsAreaRef.current;
-        if (bar && targetEl) {
-          const barBottom = bar.getBoundingClientRect().bottom;
-          const targetTop = targetEl.getBoundingClientRect().top;
-          if (targetTop < barBottom + 8) {
-            window.scrollBy({ top: targetTop - (barBottom + 8), behavior: 'auto' });
-          }
-        }
-      }
-      // If chips are not stuck yet (user is still near top), do not scroll at all
-    }
   };
 
   const handleSelectCatRef = useRef(handleSelectCat);
   handleSelectCatRef.current = handleSelectCat;
 
-  // Align grid position after category change
+  // Align grid position after a USER category change (mobile only).
+  // Runs only when `cat` actually changes: not on mount, and not when the chips
+  // bar becomes sticky (that used to yank the page back up mid-scroll).
+  const prevCatForAlignRef = useRef(cat);
   useLayoutEffect(() => {
+    if (prevCatForAlignRef.current === cat) return;
+    prevCatForAlignRef.current = cat;
     if (window.innerWidth <= 768) {
-      const isStuckNow =
-        isChipsStuck ||
-        (chipsSentinelRef.current ? chipsSentinelRef.current.getBoundingClientRect().top <= 2 : false);
+      const sentinel = chipsSentinelRef.current;
+      const isStuckNow = sentinel ? sentinel.getBoundingClientRect().top <= 2 : false;
 
       if (isStuckNow) {
-        const bar = chipsBarRef.current || document.querySelector<HTMLElement>('.chips-sticky');
-        const grid = cardsGridRef.current || document.querySelector<HTMLElement>('.cards-grid');
-        const targetEl =
-          grid && grid.style.display !== 'none'
-            ? grid
-            : cardsAreaRef.current;
+        const bar = chipsBarRef.current || document.querySelector<HTMLElement>(".chips-sticky");
+        const grid = cardsGridRef.current || document.querySelector<HTMLElement>(".cards-grid");
+        const targetEl = grid && grid.style.display !== "none" ? grid : cardsAreaRef.current;
         if (bar && targetEl) {
           const barBottom = bar.getBoundingClientRect().bottom;
           const targetTop = targetEl.getBoundingClientRect().top;
           if (targetTop < barBottom + 8) {
-            window.scrollBy({ top: targetTop - (barBottom + 8), behavior: 'auto' });
+            window.scrollBy({ top: targetTop - (barBottom + 8), behavior: "auto" });
           }
         }
       }
     }
-  }, [cat, isChipsStuck]);
+  }, [cat]);
 
   // Mobile view horizontal swipe gesture to switch categories (max-width: 768px)
   useEffect(() => {
@@ -773,8 +678,8 @@ export default function ClientHomePage() {
       const activeEl = document.activeElement;
       if (
         activeEl &&
-        (activeEl.tagName === 'INPUT' ||
-          activeEl.tagName === 'TEXTAREA' ||
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
           (activeEl as HTMLElement).isContentEditable)
       ) {
         touchStartDataRef.current = null;
@@ -784,9 +689,8 @@ export default function ClientHomePage() {
       // 4. Ignore when quotation modal or other overlays/drawers are open
       if (
         filterSheetOpenRef.current ||
-        mobileMenuOpenRef.current ||
         Boolean(reviewDialogRef.current?.open) ||
-        Boolean(planDialogRef.current?.open) ||
+        planOpenRef.current ||
         Boolean(detailDialogRef.current?.open) ||
         Boolean(contactDialogRef.current?.open)
       ) {
@@ -799,7 +703,7 @@ export default function ClientHomePage() {
       const target = e.target as HTMLElement | null;
       if (
         target?.closest(
-          '.chips, .chips-sticky, .chips-sticky-wrapper, #chips, .strip-sec, .strip-wrap, .strip-track, .co-track, .co-row, .filter-sheet, .mobile-filter-sheet, .filter-sheet-overlay, .mobile-filter-bar, dialog, [role="dialog"], input, textarea, select'
+          '.chips, .chips-sticky, .chips-sticky-wrapper, #chips, .strip-sec, .strip-wrap, .strip-track, .co-track, .co-row, .filter-sheet, .mobile-filter-sheet, .filter-sheet-overlay, .mobile-filter-bar, dialog, [role="dialog"], input, textarea, select',
         )
       ) {
         touchStartDataRef.current = null;
@@ -843,11 +747,7 @@ export default function ClientHomePage() {
       // - Math.abs(dx) > Math.abs(dy) * 1.5   (clearly horizontal)
       // - elapsed time < 600ms
       // Otherwise ignore it, so normal vertical scrolling is never affected.
-      if (
-        elapsed >= 600 ||
-        Math.abs(dx) < 60 ||
-        Math.abs(dx) <= Math.abs(dy) * 1.5
-      ) {
+      if (elapsed >= 600 || Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy) * 1.5) {
         return;
       }
 
@@ -860,16 +760,16 @@ export default function ClientHomePage() {
       if (currentIndex === -1) return;
 
       let nextIndex = -1;
-      let dir: 'next' | 'prev' | null = null;
+      let dir: "next" | "prev" | null = null;
 
       if (dx < 0) {
         // Swipe LEFT = next category
         nextIndex = currentIndex + 1;
-        dir = 'next';
+        dir = "next";
       } else {
         // Swipe RIGHT = previous category
         nextIndex = currentIndex - 1;
-        dir = 'prev';
+        dir = "prev";
       }
 
       // If there is no next/previous (first or last), do nothing
@@ -882,7 +782,7 @@ export default function ClientHomePage() {
 
       // 9. Optional: a very small haptic tick on supported devices
       try {
-        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        if (typeof navigator !== "undefined" && "vibrate" in navigator) {
           navigator.vibrate(8);
         }
       } catch {
@@ -902,38 +802,33 @@ export default function ClientHomePage() {
     };
 
     // 1. Passive listeners attached to cards container only
-    cardsEl.addEventListener('touchstart', onTouchStart, { passive: true });
-    cardsEl.addEventListener('touchmove', onTouchMove, { passive: true });
-    cardsEl.addEventListener('touchend', onTouchEnd, { passive: true });
+    cardsEl.addEventListener("touchstart", onTouchStart, { passive: true });
+    cardsEl.addEventListener("touchmove", onTouchMove, { passive: true });
+    cardsEl.addEventListener("touchend", onTouchEnd, { passive: true });
 
     return () => {
-      cardsEl.removeEventListener('touchstart', onTouchStart);
-      cardsEl.removeEventListener('touchmove', onTouchMove);
-      cardsEl.removeEventListener('touchend', onTouchEnd);
+      cardsEl.removeEventListener("touchstart", onTouchStart);
+      cardsEl.removeEventListener("touchmove", onTouchMove);
+      cardsEl.removeEventListener("touchend", onTouchEnd);
     };
   }, []);
 
   // Keyboard shortcut: '/' focuses search input on desktop
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
-      if (
-        tag === 'input' ||
-        tag === 'textarea' ||
-        tag === 'select' ||
-        target?.isContentEditable
-      ) {
+      if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) {
         return;
       }
       if (
-        planDialogRef.current?.open ||
+        planOpenRef.current ||
         detailDialogRef.current?.open ||
         reviewDialogRef.current?.open ||
         contactDialogRef.current?.open ||
         filterSheetOpen ||
-        mobileMenuOpen
+        sortSheetOpen
       ) {
         return;
       }
@@ -944,99 +839,52 @@ export default function ClientHomePage() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filterSheetOpen, mobileMenuOpen]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [filterSheetOpen, sortSheetOpen]);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split("T")[0];
 
   const companies = Object.values(
-    catalog.reduce<Record<string, { name: string; items: DecorationItem[] }>>(
-      (acc, item) => {
-        const name = COS[item.id] || 'Everest Events & Decor';
-        (acc[name] ||= { name, items: [] }).items.push(item);
-        return acc;
-      },
-      {}
-    )
+    catalog.reduce<Record<string, { name: string; items: DecorationItem[] }>>((acc, item) => {
+      const name = COS[item.id] || "Everest Events & Decor";
+      (acc[name] ||= { name, items: [] }).items.push(item);
+      return acc;
+    }, {}),
   );
   const companyCount = companies.length;
 
-  // Auto-play the photo strip (scrolls only when there are multiple items)
-  useEffect(() => {
-    const el = stripRef.current;
-    if (!el || catalog.length <= 1) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const SPEED = 45; // px per second
-    let raf = 0;
-    let last = performance.now();
-    let pos = el.scrollLeft;
-    const tick = (now: number) => {
-      const dt = Math.min(now - last, 100);
-      last = now;
-      if (Math.abs(el.scrollLeft - pos) > 2) pos = el.scrollLeft;
-      if (!stripPaused.current) {
-        pos += (SPEED * dt) / 1000;
-        const maxScroll = el.scrollWidth - el.clientWidth;
-        if (maxScroll > 0 && pos >= maxScroll) pos = 0;
-        el.scrollLeft = pos;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [catalog.length]);
-
-  const scrollCarousel = (btn: HTMLElement, dir: number) => {
-    const track = btn
-      .closest('.co-row')
-      ?.querySelector<HTMLElement>('.co-track');
-    track?.scrollBy({ left: dir * track.clientWidth * 0.8, behavior: 'smooth' });
-  };
   const companyOptions: string[] = [
     ...new Set(catalog.map((i) => COS[i.id] || i.vendor).filter((c): c is string => Boolean(c))),
   ].sort();
   const styleOptions = [...new Set(catalog.flatMap((i) => i.styles ?? []))].sort();
-  const colorOptions = [...new Set(catalog.flatMap((i) => i.colors ?? []))].sort();
   const inPriceRange = (p: number) => {
     const r = PRICE_RANGES.find((x) => x.id === fPrice);
     return !r || (p >= r.min && p < r.max);
   };
-  const filtersActive = Boolean(fCompany || fStyle || fPrice);
-  const activeFilterCount =
-    (fCompany ? 1 : 0) +
-    (fStyle ? 1 : 0) +
-    (fColor ? 1 : 0) +
-    (fPrice ? 1 : 0);
-  const sTerm = debouncedSearchQuery.trim().toLowerCase();
+  const filtersActive = Boolean(fCompanies.length > 0 || fStyle || fPrice);
+  const mobileFilterCount = fCompanies.length + (fPrice ? 1 : 0);
   const filteredItems = catalog
     .filter(
       (i) =>
-        (cat === 'All' || i.cat === cat) &&
-        (!sTerm ||
-          i.t.toLowerCase().includes(sTerm) ||
-          (COS[i.id] || '').toLowerCase().includes(sTerm) ||
-          (i.cat || '').toLowerCase().includes(sTerm)) &&
-        (!fCompany || COS[i.id] === fCompany || i.vendor === fCompany) &&
+        (cat === "All" || i.cat === cat) &&
+        (fCompanies.length === 0 || fCompanies.some((c) => COS[i.id] === c || i.vendor === c)) &&
         (!fStyle || (i.styles ?? []).includes(fStyle)) &&
         (!fColor || (i.colors ?? []).includes(fColor)) &&
         inPriceRange(i.p),
     )
     .sort((a, b) =>
-      sortBy === 'low'
+      sortBy === "low"
         ? a.p - b.p
-        : sortBy === 'high'
+        : sortBy === "high"
           ? b.p - a.p
-          : sortBy === 'name'
+          : sortBy === "name"
             ? a.t.localeCompare(b.t)
             : 0,
     );
 
   // Calculate totals
-  const totalItemCount = Object.values(eventQuotes).reduce(
-    (sum, items) => sum + items.length,
-    0
-  );
+  const totalItemCount = Object.values(eventQuotes).reduce((sum, items) => sum + items.length, 0);
 
   const grandTotal = Object.entries(eventQuotes).reduce((sum, [, itemIds]) => {
     const subtotal = itemIds.reduce((itemSum, id) => {
@@ -1053,7 +901,7 @@ export default function ClientHomePage() {
     for (const id of allItemIds) {
       const itm = catalog.find((i) => i.id === id);
       if (!itm) continue;
-      const coName = COS[itm.id] || itm.vendor || 'Everest Events & Decor';
+      const coName = COS[itm.id] || itm.vendor || "Everest Events & Decor";
       if (!map[coName]) {
         map[coName] = { id: coName, name: coName, count: 0 };
       }
@@ -1073,7 +921,7 @@ export default function ClientHomePage() {
       const retained = prev.filter((id) => currentIds.includes(id));
       // For any company in currentIds that hasn't been explicitly unchecked by user, pre-tick it
       const newToSelect = currentIds.filter(
-        (id) => !prev.includes(id) && !userUncheckedCompaniesRef.current.has(id)
+        (id) => !prev.includes(id) && !userUncheckedCompaniesRef.current.has(id),
       );
       return [...retained, ...newToSelect];
     });
@@ -1094,17 +942,14 @@ export default function ClientHomePage() {
   const selectedCompanyCount = selectedCompanies.length;
   const quotationSendBtnLabel =
     selectedCompanyCount === 0
-      ? 'Select a company'
+      ? "Select a company"
       : selectedCompanyCount === 1
-        ? 'Send request'
+        ? "Send request"
         : `Send to ${selectedCompanyCount} companies`;
 
   // Navigation index in planned events
-  const currentEventIndex = plannedEvents.findIndex(
-    (e) => e.name === activeEventName
-  );
-  const hasNextEvent =
-    currentEventIndex >= 0 && currentEventIndex < plannedEvents.length - 1;
+  const currentEventIndex = plannedEvents.findIndex((e) => e.name === activeEventName);
+  const hasNextEvent = currentEventIndex >= 0 && currentEventIndex < plannedEvents.length - 1;
   const nextEvent = hasNextEvent ? plannedEvents[currentEventIndex + 1] : null;
 
   const detailSpecs = detailItem ? getSpecs(detailItem) : null;
@@ -1145,16 +990,6 @@ export default function ClientHomePage() {
     setPhotoIdx((p) => ({ ...p, [item.id]: ((p[item.id] ?? 0) + dir + n) % n }));
   };
 
-  // Toggle like
-  const toggleLike = (id: number) => {
-    setLiked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   // Toggle card item for active event
   const handleToggleCardItem = (id: number) => {
     if (plannedEvents.length === 0) {
@@ -1183,31 +1018,13 @@ export default function ClientHomePage() {
   };
 
   // Modal open/close helpers
+  // The popup prefills itself from `plannedEvents` each time it opens
   const openPlanModal = () => {
-    setPlanError('');
-    setPlanStep(0);
-    // prefill with existing selections if available
-    if (plannedEvents.length > 0) {
-      setSelectedEventTypes(plannedEvents.map((e) => e.name));
-      const datesMap: Record<string, string> = {};
-      const venuesMap: Record<string, string> = {};
-      plannedEvents.forEach((e) => {
-        datesMap[e.name] = e.date;
-        venuesMap[e.name] = e.venue;
-      });
-      setEventDates(datesMap);
-      setEventVenues(venuesMap);
-    } else {
-      if (selectedEventTypes.length === 0) {
-        setSelectedEventTypes([]);
-      }
-    }
-    planDialogRef.current?.showModal();
+    setPlanOpen(true);
   };
 
   const closePlanModal = () => {
-    planDialogRef.current?.close();
-    setPlanError('');
+    setPlanOpen(false);
     setPendingItemId(null);
   };
 
@@ -1258,12 +1075,8 @@ export default function ClientHomePage() {
     setConfirmCancelPlan(false);
     setPlannedEvents([]);
     setActiveEventName(null);
-    setPlanMeta({ venue: '' });
+    setPlanMeta({ venue: "" });
     setEventQuotes({});
-    setSelectedEventTypes([]);
-    setEventDates({});
-    setEventVenues({});
-    setPlanStep(0);
     setPendingItemId(null);
     reviewDialogRef.current?.close();
   };
@@ -1281,16 +1094,12 @@ export default function ClientHomePage() {
     // 1. Look for first empty event AFTER currently active event
     if (activeIdx >= 0) {
       const afterEvents = plannedEvents.slice(activeIdx + 1);
-      const nextEmptyAfter = afterEvents.find(
-        (ev) => (eventQuotes[ev.name] || []).length === 0
-      );
+      const nextEmptyAfter = afterEvents.find((ev) => (eventQuotes[ev.name] || []).length === 0);
       if (nextEmptyAfter) return nextEmptyAfter;
     }
 
     // Fall back to any empty event if none comes after
-    const anyEmpty = plannedEvents.find(
-      (ev) => (eventQuotes[ev.name] || []).length === 0
-    );
+    const anyEmpty = plannedEvents.find((ev) => (eventQuotes[ev.name] || []).length === 0);
     return anyEmpty || null;
   };
 
@@ -1299,13 +1108,11 @@ export default function ClientHomePage() {
   const handleNextEmptyEventClick = (eventName: string) => {
     closeReviewModal();
     setActiveEventName(eventName);
-    decorSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+    decorSectionRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const handleSkipAndSend = (eventName: string) => {
-    const confirmed = window.confirm(
-      `${eventName} has no decorations. Send anyway?`
-    );
+    const confirmed = window.confirm(`${eventName} has no decorations. Send anyway?`);
     if (confirmed) {
       openContactModal();
     }
@@ -1331,84 +1138,11 @@ export default function ClientHomePage() {
     contactDialogRef.current?.close();
     resetContactForm();
     setIsSubmitted(false);
-    setSubmitError('');
+    setSubmitError("");
   };
 
-  // Plan event type toggle
-  const toggleEventType = (type: string) => {
-    setSelectedEventTypes((prev) => {
-      const next = prev.includes(type)
-        ? prev.filter((t) => t !== type)
-        : [...prev, type];
-      if (next.length > 0) {
-        setPlanError('');
-      }
-      return next;
-    });
-  };
-
-  const totalPlanSteps = selectedEventTypes.length + 1;
-  const stepEventName =
-    planStep > 0 ? selectedEventTypes[planStep - 1] : null;
-  const isLastPlanStep = planStep >= selectedEventTypes.length;
-  const stepLabels = ['Events', ...selectedEventTypes];
-
-  const handlePlanBack = () => {
-    setPlanError('');
-    setPlanStep((s) => Math.max(0, s - 1));
-  };
-
-  // Next / submit Plan popup ("Next →" ... "Start shopping →")
-  const handlePlanSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Step 1: event types
-    if (planStep === 0) {
-      if (selectedEventTypes.length === 0) {
-        setPlanError('Please choose at least one event.');
-        return;
-      }
-      setPlanError('');
-      setPlanStep(1);
-      return;
-    }
-
-    // Steps 2..n: date (+ venue) for one event
-    const ev = selectedEventTypes[planStep - 1];
-    if (!ev) return;
-    const evDate = eventDates[ev];
-    if (!evDate) {
-      setPlanError(`Please choose a date for ${ev}.`);
-      return;
-    }
-    if (todayStr && evDate < todayStr) {
-      setPlanError(`Date for ${ev} cannot be in the past.`);
-      return;
-    }
-    setPlanError('');
-
-    if (!isLastPlanStep) {
-      // Prefill the next event's venue with this one (still editable)
-      const nextName = selectedEventTypes[planStep];
-      if (nextName && !eventVenues[nextName]) {
-        setEventVenues((prev) => ({
-          ...prev,
-          [nextName]: (ev && prev[ev]) || '',
-        }));
-      }
-      setPlanStep(planStep + 1);
-      return;
-    }
-
-    // Final step: sort events earliest date first
-    const sorted: PlannedEvent[] = [...selectedEventTypes]
-      .map((name) => ({
-        name,
-        date: eventDates[name] || '',
-        venue: (eventVenues[name] || '').trim(),
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
+  // Plan popup finished ("Start shopping →"): events arrive sorted, earliest first
+  const handlePlanComplete = (sorted: PlannedEvent[]) => {
     setPlannedEvents(sorted);
     if (sorted[0]) setPlanMeta({ venue: sorted[0].venue });
 
@@ -1416,7 +1150,7 @@ export default function ClientHomePage() {
     const targetEvent =
       activeEventName && sorted.some((e) => e.name === activeEventName)
         ? activeEventName
-        : (sorted[0]?.name || '');
+        : sorted[0]?.name || "";
     setActiveEventName(targetEvent);
 
     // If a decoration was pending when clicked before planning, add it to first event
@@ -1426,15 +1160,13 @@ export default function ClientHomePage() {
         const cur = prev[firstEventName] || [];
         return {
           ...prev,
-          [firstEventName]: cur.includes(pendingItemId)
-            ? cur
-            : [...cur, pendingItemId],
+          [firstEventName]: cur.includes(pendingItemId) ? cur : [...cur, pendingItemId],
         };
       });
       setPendingItemId(null);
     }
 
-    planDialogRef.current?.close();
+    setPlanOpen(false);
   };
 
   // Contact form submission → sent to the dashboard as an enquiry / quotation request
@@ -1450,64 +1182,76 @@ export default function ClientHomePage() {
     }
 
     const formData = new FormData(e.currentTarget);
-    const name = contactName.trim() || (formData.get('name') as string) || '';
-    const phone = contactPhone.trim() || (formData.get('phone') as string) || '';
-    const whatsappNumber = (whatsappSameAsPhone ? phone : (contactWhatsapp.trim() || (formData.get('whatsapp') as string) || phone)).trim();
-    const message = (formData.get('message') as string) || '';
+    const name = contactName.trim() || (formData.get("name") as string) || "";
+    const phone = contactPhone.trim() || (formData.get("phone") as string) || "";
+    const whatsappNumber = (
+      whatsappSameAsPhone
+        ? phone
+        : contactWhatsapp.trim() || (formData.get("whatsapp") as string) || phone
+    ).trim();
+    const message = (formData.get("message") as string) || "";
     const toLine = (id: number) => {
       const item = catalog.find((i) => i.id === id);
       const isSecond =
         item?.id === 9101 ||
         item?.id === 9102 ||
-        item?.sid?.startsWith('dummy-royal-orchid') ||
-        item?.ownerCompanyId === 'company-2' ||
-        item?.vendor === 'Royal Orchid Events';
-      const ownerCompanyId = item?.ownerCompanyId || (isSecond ? 'company-2' : 'company-1');
+        item?.sid?.startsWith("dummy-royal-orchid") ||
+        item?.ownerCompanyId === "company-2" ||
+        item?.vendor === "Royal Orchid Events";
+      const ownerCompanyId = item?.ownerCompanyId || (isSecond ? "company-2" : "company-1");
       const ownerCompanyName =
         item?.ownerCompanyName ||
-        (isSecond ? (item?.vendor || 'Royal Orchid Events') : (COS[id] || item?.vendor || 'Company 1'));
+        (isSecond ? item?.vendor || "Royal Orchid Events" : COS[id] || item?.vendor || "Company 1");
 
       const specs = item ? getSpecs(item) : null;
-      const dimensions = specs?.dimensions || formatDimensions(item?.dimensions) || '';
-      const style = item?.styles?.length ? item.styles.join(', ') : (specs?.floral?.style || '');
-      const colours = item?.colors?.length ? item.colors.join(', ') : (specs?.floral?.color || '');
-      const structure = specs?.structure && specs.structure !== 'Standard' ? specs.structure : (item?.cat || '');
-      const platform = specs?.platform ? [specs.platform.name, specs.platform.size, specs.platform.color].filter(Boolean).join(' · ') : '';
-      const lighting = specs?.lighting ? `${specs.lighting.name}${specs.lighting.qty ? ` (${specs.lighting.qty})` : ''}` : '';
-      const flowers = specs?.floral?.style || '';
+      const dimensions = specs?.dimensions || formatDimensions(item?.dimensions) || "";
+      const style = item?.styles?.length ? item.styles.join(", ") : specs?.floral?.style || "";
+      const colours = item?.colors?.length ? item.colors.join(", ") : specs?.floral?.color || "";
+      const structure =
+        specs?.structure && specs.structure !== "Standard" ? specs.structure : item?.cat || "";
+      const platform = specs?.platform
+        ? [specs.platform.name, specs.platform.size, specs.platform.color]
+            .filter(Boolean)
+            .join(" · ")
+        : "";
+      const lighting = specs?.lighting
+        ? `${specs.lighting.name}${specs.lighting.qty ? ` (${specs.lighting.qty})` : ""}`
+        : "";
+      const flowers = specs?.floral?.style || "";
 
       const inclusions: string[] = [];
       if (Array.isArray(item?.inclusions) && item.inclusions.length > 0) {
         inclusions.push(...item.inclusions);
       } else {
-        if (structure && structure !== 'Standard') inclusions.push(`Structure: ${structure}`);
+        if (structure && structure !== "Standard") inclusions.push(`Structure: ${structure}`);
         if (flowers) inclusions.push(`Floral: ${flowers}`);
         if (platform) inclusions.push(`Platform: ${platform}`);
         if (lighting) inclusions.push(`Lighting: ${lighting}`);
         if (specs?.addons?.length) {
-          specs.addons.forEach((a: any) => inclusions.push(`${a.title}${a.sub ? ` (${a.sub})` : ''}`));
+          specs.addons.forEach((a: any) =>
+            inclusions.push(`${a.title}${a.sub ? ` (${a.sub})` : ""}`),
+          );
         }
       }
 
-      const rawGallery = [
-        item?.img,
-        ...(Array.isArray(item?.images) ? item.images : []),
-      ].filter((u): u is string => Boolean(u));
+      const rawGallery = [item?.img, ...(Array.isArray(item?.images) ? item.images : [])].filter(
+        (u): u is string => Boolean(u),
+      );
       const gallery = [...new Set(rawGallery)];
 
       return {
         id: item?.sid ?? String(id),
         decorationId: item?.sid ?? String(id),
-        title: item?.t ?? '',
-        name: item?.t ?? '',
-        category: item?.cat ?? '',
-        image: item?.img ?? '',
-        photo: item?.img ?? '',
+        title: item?.t ?? "",
+        name: item?.t ?? "",
+        category: item?.cat ?? "",
+        image: item?.img ?? "",
+        photo: item?.img ?? "",
         gallery: gallery.length > 0 ? gallery : undefined,
         price: item?.p ?? 0,
         listedPrice: item?.p ?? 0,
-        priceUnit: item?.priceUnit || (item as any)?.price_unit || 'per setup',
-        description: item?.d ?? specs?.summary ?? '',
+        priceUnit: item?.priceUnit || (item as any)?.price_unit || "per setup",
+        description: item?.d ?? specs?.summary ?? "",
         inclusions: inclusions.length > 0 ? inclusions : undefined,
         style: style || undefined,
         colours: colours || undefined,
@@ -1526,28 +1270,30 @@ export default function ClientHomePage() {
 
     const payload: Parameters<typeof submitEnquiry>[0] = buyNowItem
       ? {
-          type: 'direct-order',
+          type: "direct-order",
           name,
           phone,
           whatsappNumber,
           whatsappSameAsPhone,
           message,
-          venue: (formData.get('venue') as string) || '',
+          venue: (formData.get("venue") as string) || "",
           grandTotal: buyNowItem.p,
           // A direct order goes to the company that owns this decoration.
-          companies: [toLine(buyNowItem.id).ownerCompanyName || buyNowItem.vendor || 'Everest Events & Decor'],
+          companies: [
+            toLine(buyNowItem.id).ownerCompanyName || buyNowItem.vendor || "Everest Events & Decor",
+          ],
           events: [
             {
-              name: 'Direct order',
-              date: (formData.get('date') as string) || '',
-              venue: (formData.get('venue') as string) || '',
+              name: "Direct order",
+              date: (formData.get("date") as string) || "",
+              venue: (formData.get("venue") as string) || "",
               decorations: [toLine(buyNowItem.id)],
               subtotal: buyNowItem.p,
             },
           ],
         }
       : {
-          type: 'quotation-request',
+          type: "quotation-request",
           name,
           phone,
           whatsappNumber,
@@ -1568,7 +1314,7 @@ export default function ClientHomePage() {
           }),
         };
 
-    setSubmitError('');
+    setSubmitError("");
     // One key per request: a retry of the same request reuses its ids, so it can never create duplicates.
     if (!submissionKeyRef.current) {
       submissionKeyRef.current = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -1578,12 +1324,12 @@ export default function ClientHomePage() {
     setIsSending(true);
     try {
       await submitEnquiry(payload);
-      submissionKeyRef.current = '';
+      submissionKeyRef.current = "";
     } catch (err) {
       setSubmitError(
         err instanceof Error && err.message
           ? `${err.message}. Please try again, or contact us directly.`
-          : 'Could not send your request. Please try again.'
+          : "Could not send your request. Please try again.",
       );
       return;
     } finally {
@@ -1596,12 +1342,8 @@ export default function ClientHomePage() {
     // The request is sent: clear the plan so the next visit starts from scratch
     setPlannedEvents([]);
     setActiveEventName(null);
-    setPlanMeta({ venue: '' });
+    setPlanMeta({ venue: "" });
     setEventQuotes({});
-    setSelectedEventTypes([]);
-    setEventDates({});
-    setEventVenues({});
-    setPlanStep(0);
     setPendingItemId(null);
     setIsSubmitted(true);
   };
@@ -1611,7 +1353,7 @@ export default function ClientHomePage() {
 
   const handleDialogMouseDown = (
     e: React.MouseEvent<HTMLDialogElement>,
-    dialogRef: React.RefObject<HTMLDialogElement | null>
+    dialogRef: React.RefObject<HTMLDialogElement | null>,
   ) => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -1630,7 +1372,7 @@ export default function ClientHomePage() {
 
   const handleBackdropClick = (
     e: React.MouseEvent<HTMLDialogElement>,
-    dialogRef: React.RefObject<HTMLDialogElement | null>
+    dialogRef: React.RefObject<HTMLDialogElement | null>,
   ) => {
     const dialog = dialogRef.current;
     if (!dialog || !dialog.open) return;
@@ -1667,49 +1409,21 @@ export default function ClientHomePage() {
         role="button"
         aria-label={`View details for ${item.t}`}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
+          if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             handleCardClick();
           }
         }}
       >
-        <div
-          className="ph"
-          style={{
-            background: `linear-gradient(160deg, ${item.g[0]}, ${item.g[1]})`,
-          }}
-        >
-          <svg
-            viewBox="0 0 300 375"
-            preserveAspectRatio="xMidYMid slice"
-            aria-hidden="true"
-            dangerouslySetInnerHTML={{
-              __html: ART[item.cat] || '',
-            }}
-          />
-          <img
-            src={item.images?.[0] ?? item.img}
-            alt={item.t}
-            loading="lazy"
-            onError={(e) => {
-              (e.currentTarget as HTMLElement).style.display = 'none';
-            }}
-          />
-          <span className="cn">{COS[item.id] || item.vendor || 'Everest Events & Decor'}</span>
-          {cat === 'All' && <span className="tag">{item.cat}</span>}
-          <button
-            type="button"
-            className={`heart${liked.has(item.id) ? ' on' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleLike(item.id);
-            }}
-            aria-label={liked.has(item.id) ? `Saved ${item.t}` : `Save ${item.t}`}
-            aria-pressed={liked.has(item.id)}
-          >
-            {liked.has(item.id) ? '♥' : '♡'}
-          </button>
-        </div>
+        {/* Image area: skeleton while loading, photo once loaded, clean fallback on error.
+            Badges appear only on top of a successfully loaded photo. */}
+        <CardImage
+          src={item.images?.[0] ?? item.img}
+          alt={item.t}
+          vendorName={COS[item.id] || item.vendor || "Everest Events & Decor"}
+          category={item.cat}
+          showCategoryTag={cat === "All"}
+        />
         <div className="pb">
           <h4 className="serif post-title">
             <a
@@ -1728,7 +1442,7 @@ export default function ClientHomePage() {
           <div className="post-price-line">
             <b className="price">
               {fmtItem(item.p)}
-              {item.u || ''}
+              {item.u || ""}
             </b>
           </div>
         </div>
@@ -1748,7 +1462,7 @@ export default function ClientHomePage() {
             if (window.history.length > 1) {
               window.history.back();
             } else {
-              window.location.href = '/';
+              window.location.href = "/";
             }
           }}
         >
@@ -1767,138 +1481,24 @@ export default function ClientHomePage() {
           </svg>
         </button>
 
-        <SearchInput
+        <SearchAutocomplete
           ref={mobileSearchInputRef}
+          catalog={catalog}
+          loading={catalogLoading}
+          getCompany={getItemCompany}
           value={searchQuery}
           onChange={handleSearchChange}
+          onSelectCompany={handleSuggestCompany}
+          onSelectDecoration={handleSuggestDecoration}
+          formatPrice={fmtItem}
           placeholder="Search decorations"
-          ariaLabel="Search decorations"
-          className="mobile-header-search"
+          ariaLabel="Search decorations or companies"
+          inputClassName="mobile-header-search"
         />
 
-        <button
-          type="button"
-          className="mobile-icon-btn mobile-menu-btn"
-          onClick={() => setMobileMenuOpen(true)}
-          aria-label="Open navigation menu"
-          title="Menu"
-        >
-          <svg
-            width="19"
-            height="19"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <line x1="4" x2="20" y1="6" y2="6" />
-            <line x1="4" x2="20" y1="12" y2="12" />
-            <line x1="4" x2="20" y1="18" y2="18" />
-          </svg>
-        </button>
+        {/* Profile (opens the companies page until a real login exists) */}
+        <ProfileButton variant="icon" className="mobile-profile-btn" />
       </header>
-
-      {/* Mobile Navigation Drawer */}
-      {mobileMenuOpen && (
-        <div
-          className="mobile-drawer-overlay"
-          onClick={() => setMobileMenuOpen(false)}
-        >
-          <div
-            className="mobile-drawer"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Menu"
-          >
-            <div className="mobile-drawer-header">
-              <span className="mobile-drawer-title">Menu</span>
-              <button
-                type="button"
-                className="mobile-drawer-close"
-                onClick={() => setMobileMenuOpen(false)}
-                aria-label="Close menu"
-              >
-                ✕
-              </button>
-            </div>
-            <nav className="mobile-drawer-nav">
-              <button
-                type="button"
-                className="drawer-nav-item"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  openPlanModal();
-                }}
-              >
-                <span>✨ Plan your event</span>
-                <span className="drawer-arrow">→</span>
-              </button>
-              {totalItemCount > 0 && (
-                <button
-                  type="button"
-                  className="drawer-nav-item"
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    openReviewModal();
-                  }}
-                >
-                  <span>🛍️ Review quotation ({totalItemCount})</span>
-                  <span className="drawer-arrow">→</span>
-                </button>
-              )}
-              <button
-                type="button"
-                className="drawer-nav-item"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  decorSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
-                }}
-              >
-                <span>Browse all decorations</span>
-                <span className="drawer-arrow">→</span>
-              </button>
-              <button
-                type="button"
-                className="drawer-nav-item"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  setFilterSheetOpen(true);
-                }}
-              >
-                <span>Filter &amp; sort</span>
-                <span className="drawer-arrow">→</span>
-              </button>
-              <button
-                type="button"
-                className="drawer-nav-item"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  setShowSendRequestPreview(true);
-                }}
-              >
-                <span>📋 Preview "Send Request" UI</span>
-                <span className="drawer-arrow">→</span>
-              </button>
-              <a
-                href="/dashboard"
-                className="drawer-nav-item"
-                style={{ textDecoration: "none" }}
-              >
-                <span>🏢 Company Dashboard</span>
-                <span className="drawer-arrow">→</span>
-              </a>
-            </nav>
-            <div className="mobile-drawer-foot">
-              <p className="drawer-tagline">Luxury Wedding &amp; Event Production</p>
-              <p className="drawer-phone">Kathmandu &amp; Pokhara · Nepal</p>
-            </div>
-          </div>
-        </div>
-      )}
       {/* 1. Desktop sticky shopping bar (shown after planning on >= 769px) */}
       {plannedEvents.length > 0 && (
         <aside className="shopping-bar desktop-shopping-bar">
@@ -1912,7 +1512,7 @@ export default function ClientHomePage() {
                   <button
                     key={ev.name}
                     type="button"
-                    className={`event-pill${isActive ? ' active' : ''}`}
+                    className={`event-pill${isActive ? " active" : ""}`}
                     onClick={() => {
                       if (isActive) {
                         openPlanModal();
@@ -1922,16 +1522,12 @@ export default function ClientHomePage() {
                     }}
                   >
                     <span className="num-badge">{idx + 1}</span>
-                    <span style={{ fontWeight: isActive ? 600 : 500 }}>
-                      {ev.name}
-                    </span>
+                    <span style={{ fontWeight: isActive ? 600 : 500 }}>{ev.name}</span>
                     <span style={{ opacity: 0.65 }}>·</span>
-                    <span style={{ fontSize: '11px' }}>
-                      {formatDate(ev.date)}
-                    </span>
+                    <span style={{ fontSize: "11px" }}>{formatDate(ev.date)}</span>
                     <span style={{ opacity: 0.65 }}>·</span>
                     <span className="count-badge">
-                      {count} item{count === 1 ? '' : 's'}
+                      {count} item{count === 1 ? "" : "s"}
                     </span>
                   </button>
                 );
@@ -1961,30 +1557,43 @@ export default function ClientHomePage() {
               </svg>
               <span className="edit-plan-text">Edit plan</span>
             </button>
-              <button
-                type="button"
-                className={`pill cancel-plan${confirmCancelPlan ? ' confirm' : ''}`}
-                onClick={handleCancelPlan}
-                aria-label="Cancel plan and remove all selected items"
-                title="Cancel plan"
-              >
-                {confirmCancelPlan ? (
-                  <span>Sure?</span>
-                ) : (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-<span className="edit-plan-text">Cancel plan</span>
-                  </>
-                )}
-              </button>
+            <button
+              type="button"
+              className={`pill cancel-plan${confirmCancelPlan ? " confirm" : ""}`}
+              onClick={handleCancelPlan}
+              aria-label="Cancel plan and remove all selected items"
+              title="Cancel plan"
+            >
+              {confirmCancelPlan ? (
+                <span>Sure?</span>
+              ) : (
+                <>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                  <span className="edit-plan-text">Cancel plan</span>
+                </>
+              )}
+            </button>
           </div>
         </aside>
       )}
 
       {/* Page header */}
       <header className="page-hero">
+        {/* Desktop profile button, top-right corner (phones use the one in the header) */}
+        <ProfileButton variant="pill" className="desktop-profile-btn" />
         <div className="page-hero-in">
-          <span className="page-hero-badge">Wedding Events</span>
           <h1 className="serif page-hero-title">
             Event <em>Decoration</em>
           </h1>
@@ -1995,7 +1604,9 @@ export default function ClientHomePage() {
               ) : (
                 <b className="serif">{companyCount}</b>
               )}
-              <span>{catalogLoading ? 'Checking...' : companyCount === 1 ? 'Company' : 'Companies'}</span>
+              <span>
+                {catalogLoading ? "Checking..." : companyCount === 1 ? "Company" : "Companies"}
+              </span>
             </div>
             <div>
               {catalogLoading ? (
@@ -2003,143 +1614,42 @@ export default function ClientHomePage() {
               ) : (
                 <b className="serif">{catalog.length}</b>
               )}
-              <span>{catalogLoading ? 'Loading...' : catalog.length === 1 ? 'Decoration' : 'Decorations'}</span>
+              <span>
+                {catalogLoading
+                  ? "Loading..."
+                  : catalog.length === 1
+                    ? "Decoration"
+                    : "Decorations"}
+              </span>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Company decoration strip (carousel) */}
-      {catalogLoading ? (
-        <section className="strip-sec" aria-label="Loading featured decorations">
-          <div className="co-row strip-wrap">
-            <div className="co-track strip-track skeleton-strip-track">
-              {[1, 2, 3, 4, 5].map((idx) => (
-                <div key={idx} className="strip-card skeleton-strip-card">
-                  <div className="strip-img skeleton-pulse" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : catalog.length > 0 ? (
-        <section className="strip-sec">
-          <div className="co-row strip-wrap">
-            {catalog.length > 1 && (
-              <button
-                type="button"
-                className="strip-arrow left"
-                aria-label="Scroll left"
-                onClick={(e) => scrollCarousel(e.currentTarget, -1)}
-              >
-                ‹
-              </button>
-            )}
-            <div
-              className="co-track strip-track"
-              ref={stripRef}
-              onMouseEnter={() => (stripPaused.current = true)}
-              onMouseLeave={() => (stripPaused.current = false)}
-              onTouchStart={() => (stripPaused.current = true)}
-              onTouchEnd={() => (stripPaused.current = false)}
-              onFocus={() => (stripPaused.current = true)}
-              onBlur={() => (stripPaused.current = false)}
-              onScroll={(e) => {
-                const el = e.currentTarget;
-                const card = el.querySelector<HTMLElement>('.strip-card');
-                if (card && card.offsetWidth > 0) {
-                  const cardW = card.offsetWidth + 12;
-                  const idx = Math.round(el.scrollLeft / cardW);
-                  setStripActiveIdx(idx % Math.min(catalog.length, 6));
-                }
-              }}
-            >
-              {catalog.map((item) => (
-                <button
-                  type="button"
-                  key={item.id}
-                  className="strip-card"
-                  onClick={() => {
-                    window.location.href = `/decor/${getDecorationSlug(item)}`;
-                  }}
-                  aria-label={`View ${item.t} by ${COS[item.id] || item.vendor}`}
-                >
-                  <div
-                    className="strip-img"
-                    style={{
-                      background: `linear-gradient(160deg, ${item.g[0]}, ${item.g[1]})`,
-                    }}
-                  >
-                    <img
-                      src={item.img}
-                      alt={item.t}
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLElement).style.display = 'none';
-                      }}
-                    />
-                    <div className="strip-cap">
-                      <b>{COS[item.id] || item.vendor}</b>
-                      <span>{item.t}</span>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-            {catalog.length > 1 && (
-              <button
-                type="button"
-                className="strip-arrow right"
-                aria-label="Scroll right"
-                onClick={(e) => scrollCarousel(e.currentTarget, 1)}
-              >
-                ›
-              </button>
-            )}
-          </div>
-
-          {/* Carousel pagination dots on mobile */}
-          {catalog.length > 1 && (
-            <div className="carousel-dots" aria-hidden="true">
-              {Array.from({ length: Math.min(catalog.length, 6) }).map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  className={`carousel-dot${stripActiveIdx === i ? ' active' : ''}`}
-                  onClick={() => {
-                    const el = stripRef.current;
-                    if (!el) return;
-                    const card = el.querySelector<HTMLElement>('.strip-card');
-                    if (card && card.offsetWidth > 0) {
-                      const cardW = card.offsetWidth + 12;
-                      el.scrollTo({ left: i * cardW, behavior: 'smooth' });
-                      setStripActiveIdx(i);
-                    }
-                  }}
-                  aria-label={`Go to slide ${i + 1}`}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
+      {/* Featured decorations carousel (smooth 60/120fps GPU loop & responsive drag) */}
+      <FeaturedCarousel
+        catalog={catalog}
+        loading={catalogLoading}
+        getVendorName={(item) =>
+          COS[item.id] || item.ownerCompanyName || item.vendor || "Everest Events & Decor"
+        }
+      />
 
       {/* 2. Decorations Section */}
       <section className="sec" ref={decorSectionRef}>
-        <div className="in" style={{ maxWidth: 1350 }}>
+        <div className="in">
           <div className="catalog-head">
             <div>
               <h2 className="serif catalog-title">
                 Find your perfect <em>decor</em>
               </h2>
               <p className="catalog-sub">
-                Stage, entrance, mandap, backdrops and more. Add what you love to
-                your quotation.
+                Stage, entrance, mandap, backdrops and more. Add what you love to your quotation.
               </p>
             </div>
             <span className="catalog-count" id="cnt">
               {filteredItems.length} decoration
-              {filteredItems.length === 1 ? '' : 's'}
+              {filteredItems.length === 1 ? "" : "s"}
             </span>
           </div>
 
@@ -2149,7 +1659,7 @@ export default function ClientHomePage() {
           {/* Sticky wrapper for plan pill + chips + filters/sort on mobile (< 768px) */}
           <div
             ref={chipsBarRef}
-            className={`chips-sticky-wrapper chips-sticky${isChipsStuck ? ' is-stuck' : ''}`}
+            className={`chips-sticky-wrapper chips-sticky${isChipsStuck ? " is-stuck" : ""}`}
           >
             {/* Row 1: Plan pill row (mobile only when event planned) */}
             {plannedEvents.length > 0 && (
@@ -2162,7 +1672,7 @@ export default function ClientHomePage() {
                       <button
                         key={ev.name}
                         type="button"
-                        className={`event-pill${isActive ? ' active' : ''}`}
+                        className={`event-pill${isActive ? " active" : ""}`}
                         onClick={() => {
                           if (isActive) {
                             openPlanModal();
@@ -2172,16 +1682,12 @@ export default function ClientHomePage() {
                         }}
                       >
                         <span className="num-badge">{idx + 1}</span>
-                        <span style={{ fontWeight: isActive ? 600 : 500 }}>
-                          {ev.name}
-                        </span>
+                        <span style={{ fontWeight: isActive ? 600 : 500 }}>{ev.name}</span>
                         <span style={{ opacity: 0.65 }}>·</span>
-                        <span style={{ fontSize: '11px' }}>
-                          {formatDate(ev.date)}
-                        </span>
+                        <span style={{ fontSize: "11px" }}>{formatDate(ev.date)}</span>
                         <span style={{ opacity: 0.65 }}>·</span>
                         <span className="count-badge">
-                          {count} item{count === 1 ? '' : 's'}
+                          {count} item{count === 1 ? "" : "s"}
                         </span>
                       </button>
                     );
@@ -2213,19 +1719,31 @@ export default function ClientHomePage() {
                 </button>
                 <button
                   type="button"
-                  className={`pill cancel-plan${confirmCancelPlan ? ' confirm' : ''}`}
+                  className={`pill cancel-plan${confirmCancelPlan ? " confirm" : ""}`}
                   onClick={handleCancelPlan}
                   aria-label="Cancel plan and remove all selected items"
                   title="Cancel plan"
                 >
                   {confirmCancelPlan ? (
-                  <span>Sure?</span>
-                ) : (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-<span className="edit-plan-text">Cancel plan</span>
-                  </>
-                )}
+                    <span>Sure?</span>
+                  ) : (
+                    <>
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                      <span className="edit-plan-text">Cancel plan</span>
+                    </>
+                  )}
                 </button>
               </div>
             )}
@@ -2238,13 +1756,13 @@ export default function ClientHomePage() {
                   ref={(el) => {
                     chipBtnRefs.current[c] = el;
                   }}
-                  className={`cat${c === cat ? ' on' : ''}`}
+                  className={`cat${c === cat ? " on" : ""}`}
                   onClick={() => handleSelectCat(c)}
                 >
                   <span
                     className="ic"
                     dangerouslySetInnerHTML={{
-                      __html: `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[c] ?? ICONS['Stage']}</svg>`,
+                      __html: `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[c] ?? ICONS["Stage"]}</svg>`,
                     }}
                   />
                   {c}
@@ -2256,9 +1774,9 @@ export default function ClientHomePage() {
             <div className="mobile-filter-bar">
               <button
                 type="button"
-                className={`pill mobile-filter-btn${activeFilterCount > 0 ? ' on' : ''}`}
+                className={`pill mobile-filter-btn${mobileFilterCount > 0 ? " on" : ""}`}
                 onClick={() => {
-                  setFilterSheetTab('filter');
+                  setSortSheetOpen(false);
                   setFilterSheetOpen(true);
                 }}
               >
@@ -2275,16 +1793,14 @@ export default function ClientHomePage() {
                 >
                   <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
                 </svg>
-                <span>
-                  Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-                </span>
+                <span>Filters{mobileFilterCount > 0 ? ` (${mobileFilterCount})` : ""}</span>
               </button>
               <button
                 type="button"
-                className={`pill mobile-filter-btn${sortBy !== 'featured' ? ' on' : ''}`}
+                className={`pill mobile-filter-btn${sortBy !== "featured" || Boolean(fStyle) ? " on" : ""}`}
                 onClick={() => {
-                  setFilterSheetTab('sort');
-                  setFilterSheetOpen(true);
+                  setFilterSheetOpen(false);
+                  setSortSheetOpen(true);
                 }}
               >
                 <svg
@@ -2305,9 +1821,11 @@ export default function ClientHomePage() {
                 </svg>
                 <span>
                   Sort
-                  {sortBy !== 'featured'
-                    ? ` · ${sortBy === 'low' ? 'Low' : sortBy === 'high' ? 'High' : 'A-Z'}`
-                    : ''}
+                  {sortBy !== "featured"
+                    ? ` · ${sortBy === "low" ? "Low" : sortBy === "high" ? "High" : "A-Z"}`
+                    : fStyle
+                      ? ` · ${fStyle}`
+                      : ""}
                 </span>
               </button>
             </div>
@@ -2323,33 +1841,39 @@ export default function ClientHomePage() {
             >
               <span>
                 Filter &amp; sort
-                {(fCompany ? 1 : 0) +
+                {(fCompanies.length > 0 ? 1 : 0) +
                   (fStyle ? 1 : 0) +
                   (fColor ? 1 : 0) +
                   (fPrice ? 1 : 0) +
-                  (sortBy !== 'featured' ? 1 : 0) >
+                  (sortBy !== "featured" ? 1 : 0) >
                   0 &&
-                  ` · ${(fCompany ? 1 : 0) + (fStyle ? 1 : 0) + (fPrice ? 1 : 0) + (sortBy !== 'featured' ? 1 : 0)}`}
+                  ` · ${(fCompanies.length > 0 ? 1 : 0) + (fStyle ? 1 : 0) + (fPrice ? 1 : 0) + (sortBy !== "featured" ? 1 : 0)}`}
               </span>
-              <span aria-hidden="true">{filtersOpen ? '▴' : '▾'}</span>
+              <span aria-hidden="true">{filtersOpen ? "▴" : "▾"}</span>
             </button>
             <div
-              className={`filters${filtersOpen ? ' open' : ''}`}
+              className={`filters${filtersOpen ? " open" : ""}`}
               role="group"
               aria-label="Filter and sort decorations"
             >
-              <SearchInput
+              <SearchAutocomplete
                 ref={desktopSearchInputRef}
+                catalog={catalog}
+                loading={catalogLoading}
+                getCompany={getItemCompany}
                 value={searchQuery}
                 onChange={handleSearchChange}
+                onSelectCompany={handleSuggestCompany}
+                onSelectDecoration={handleSuggestDecoration}
+                formatPrice={fmtItem}
                 placeholder="Search decorations, companies, or categories... (Press '/' to focus)"
                 ariaLabel="Search decorations, companies, or categories"
               />
               {companyOptions.length > 0 && (
                 <select
                   aria-label="Company"
-                  value={fCompany}
-                  onChange={(e) => setFCompany(e.target.value)}
+                  value={fCompanies.length === 1 ? fCompanies[0] : ""}
+                  onChange={(e) => setFCompanies(e.target.value ? [e.target.value] : [])}
                 >
                   <option value="">Company</option>
                   {companyOptions.map((c) => (
@@ -2400,10 +1924,10 @@ export default function ClientHomePage() {
                   type="button"
                   className="filters-clear"
                   onClick={() => {
-                    setFCompany('');
-                    setFStyle('');
-                    setFColor('');
-                    setFPrice('');
+                    setFCompanies([]);
+                    setFStyle("");
+                    setFColor("");
+                    setFPrice("");
                   }}
                 >
                   Clear filters
@@ -2416,12 +1940,12 @@ export default function ClientHomePage() {
             className="cards-area-wrapper"
             ref={cardsAreaRef}
             style={{
-              touchAction: 'pan-y',
+              touchAction: "pan-y",
             }}
           >
             {catalogLoading ? (
               <div className="cards-grid skeleton-grid" aria-label="Loading decorations">
-                {[1, 2, 3, 4, 5, 6].map((idx) => (
+                {SKELETON_KEYS.map((idx) => (
                   <div key={idx} className="skeleton-card">
                     <div className="skeleton-image skeleton-pulse" />
                     <div className="skeleton-content">
@@ -2440,11 +1964,11 @@ export default function ClientHomePage() {
               <div
                 key={cat}
                 className={`cards-area-content${
-                  swipeDirection === 'next'
-                    ? ' cards-swipe-next'
-                    : swipeDirection === 'prev'
-                    ? ' cards-swipe-prev'
-                    : ''
+                  swipeDirection === "next"
+                    ? " cards-swipe-next"
+                    : swipeDirection === "prev"
+                      ? " cards-swipe-prev"
+                      : ""
                 }`}
                 onAnimationEnd={() => setSwipeDirection(null)}
               >
@@ -2458,26 +1982,24 @@ export default function ClientHomePage() {
                       🌸
                     </div>
                     <h3 className="filters-empty-title">
-                      {filtersActive || searchQuery
-                        ? 'No decorations match your search'
-                        : 'No decorations found'}
+                      {filtersActive ? "No decorations match your filters" : "No decorations found"}
                     </h3>
                     <p className="filters-empty-sub">
-                      {filtersActive || searchQuery
-                        ? 'Try clearing some filters or searching for different keywords.'
-                        : 'There are no active decorations in this category at the moment.'}
+                      {filtersActive
+                        ? "Try clearing some filters."
+                        : "There are no active decorations in this category at the moment."}
                     </p>
-                    {(filtersActive || searchQuery || cat !== 'All') && (
+                    {(filtersActive || cat !== "All") && (
                       <button
                         type="button"
                         className="filters-empty-clear-btn"
                         onClick={() => {
-                          handleSearchChange('');
-                          setFCompany('');
-                          setFStyle('');
-                          setFColor('');
-                          setFPrice('');
-                          setCat('All');
+                          handleSearchChange("");
+                          setFCompanies([]);
+                          setFStyle("");
+                          setFColor("");
+                          setFPrice("");
+                          setCat("All");
                         }}
                       >
                         Show all decorations
@@ -2492,13 +2014,15 @@ export default function ClientHomePage() {
           {/* Next event prompt at end of catalog if more events exist */}
           {hasNextEvent && nextEvent && plannedEvents.length > 0 && (
             <div className="next-event-banner">
-              <p>Done shopping for <b>{activeEventName}</b>?</p>
+              <p>
+                Done shopping for <b>{activeEventName}</b>?
+              </p>
               <button
                 type="button"
                 className="pill pri next-event-btn"
                 onClick={() => {
                   setActiveEventName(nextEvent.name);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                  window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
               >
                 Continue to {nextEvent.name} →
@@ -2512,7 +2036,7 @@ export default function ClientHomePage() {
       {plannedEvents.length === 0 && (
         <button
           type="button"
-          className={`pill pri plan-btn${fabHidden ? ' plan-btn--hide' : ''}`}
+          className={`pill pri plan-btn${fabHidden ? " plan-btn--hide" : ""}`}
           onClick={openPlanModal}
           aria-label="Plan your event"
         >
@@ -2521,9 +2045,9 @@ export default function ClientHomePage() {
       )}
 
       {/* 4. Floating quotation bottom bar (when planned and items are chosen) */}
-      <div className={`bar${totalItemCount > 0 ? ' show' : ''}`} id="bar">
+      <div className={`bar${totalItemCount > 0 ? " show" : ""}`} id="bar">
         <span id="qc" className="bar-count-text">
-          {totalItemCount} item{totalItemCount > 1 ? 's' : ''} in quotation
+          {totalItemCount} item{totalItemCount > 1 ? "s" : ""} in quotation
         </span>
         <button className="pill pri" id="vq" onClick={openReviewModal}>
           Review quotation
@@ -2552,7 +2076,7 @@ export default function ClientHomePage() {
                 src={photoOf(detailItem)}
                 alt={detailItem.t}
                 onError={(e) => {
-                  (e.currentTarget as HTMLElement).style.display = 'none';
+                  (e.currentTarget as HTMLElement).style.display = "none";
                 }}
               />
               {photoCount(detailItem) > 1 && Array.isArray(detailItem.images) && (
@@ -2578,7 +2102,7 @@ export default function ClientHomePage() {
                       <button
                         key={src}
                         type="button"
-                        className={`thumb${i === Math.min(photoIdx[detailItem.id] ?? 0, photoCount(detailItem) - 1) ? ' on' : ''}`}
+                        className={`thumb${i === Math.min(photoIdx[detailItem.id] ?? 0, photoCount(detailItem) - 1) ? " on" : ""}`}
                         aria-label={`Photo ${i + 1} of ${photoCount(detailItem)}`}
                         onClick={() => setPhotoIdx((p) => ({ ...p, [detailItem.id]: i }))}
                       >
@@ -2588,25 +2112,31 @@ export default function ClientHomePage() {
                   </div>
                 </>
               )}
-              <button
-                type="button"
-                className="detail-x"
-                onClick={closeDetail}
-                aria-label="Close"
-              >
+              <button type="button" className="detail-x" onClick={closeDetail} aria-label="Close">
                 ✕
               </button>
             </div>
             <div className="detail-body">
               <div className="detail-meta">
                 <span className="detail-cat">{detailItem.cat}</span>
-                <span>by {COS[detailItem.id] || detailItem.vendor || 'Everest Events & Decor'}</span>
+                <span>
+                  by {COS[detailItem.id] || detailItem.vendor || "Everest Events & Decor"}
+                </span>
               </div>
               <h2 className="serif" id="detail-title">
                 {detailItem.t}
               </h2>
               {detailItem.d && (
-                <p className="detail-desc" style={{ color: 'var(--mute)', fontSize: '13.5px', marginTop: '6px', marginBottom: '16px', lineHeight: 1.5 }}>
+                <p
+                  className="detail-desc"
+                  style={{
+                    color: "var(--mute)",
+                    fontSize: "13.5px",
+                    marginTop: "6px",
+                    marginBottom: "16px",
+                    lineHeight: 1.5,
+                  }}
+                >
                   {detailItem.d}
                 </p>
               )}
@@ -2617,16 +2147,20 @@ export default function ClientHomePage() {
                     <dl className="spec-dl">
                       <div>
                         <dt>Structure type</dt>
-                        <dd>{typeof detailSpecs.structure === 'string' && detailSpecs.structure ? detailSpecs.structure : detailItem.cat}</dd>
+                        <dd>
+                          {typeof detailSpecs.structure === "string" && detailSpecs.structure
+                            ? detailSpecs.structure
+                            : detailItem.cat}
+                        </dd>
                       </div>
                       <div>
                         <dt>Dimensions</dt>
                         <dd>
-                          {typeof detailSpecs.dimensions === 'string' && detailSpecs.dimensions
+                          {typeof detailSpecs.dimensions === "string" && detailSpecs.dimensions
                             ? detailSpecs.dimensions
-                            : (detailSpecs.dimensions && typeof detailSpecs.dimensions === 'object'
-                              ? `${(detailSpecs.dimensions as any).width_ft || (detailSpecs.dimensions as any).width || ''} × ${(detailSpecs.dimensions as any).height_ft || (detailSpecs.dimensions as any).height || ''} ft`
-                              : 'Standard dimensions')}
+                            : detailSpecs.dimensions && typeof detailSpecs.dimensions === "object"
+                              ? `${(detailSpecs.dimensions as any).width_ft || (detailSpecs.dimensions as any).width || ""} × ${(detailSpecs.dimensions as any).height_ft || (detailSpecs.dimensions as any).height || ""} ft`
+                              : "Standard dimensions"}
                         </dd>
                       </div>
                     </dl>
@@ -2640,7 +2174,11 @@ export default function ClientHomePage() {
                       <dl className="spec-dl">
                         <div>
                           <dt>Flower style</dt>
-                          <dd>{typeof detailSpecs.floral.style === 'string' ? detailSpecs.floral.style : 'Floral arrangement'}</dd>
+                          <dd>
+                            {typeof detailSpecs.floral.style === "string"
+                              ? detailSpecs.floral.style
+                              : "Floral arrangement"}
+                          </dd>
                         </div>
                         {detailSpecs.floral.varietyType && (
                           <div>
@@ -2653,14 +2191,17 @@ export default function ClientHomePage() {
                         detailSpecs.floral.flowers.length > 0 &&
                         detailSpecs.floral.flowers.map((f, i) => {
                           const colour =
-                            f.colour || (detailSpecs.floral.color && detailSpecs.floral.color !== '-' ? detailSpecs.floral.color : '');
+                            f.colour ||
+                            (detailSpecs.floral.color && detailSpecs.floral.color !== "-"
+                              ? detailSpecs.floral.color
+                              : "");
                           return (
                             <div className="spec-row" key={`${f.name}-${i}`}>
                               <div>
                                 <b>{f.name}</b>
                                 <small>
                                   Variety: {f.kind}
-                                  {colour ? ` · Colour: ${colour}` : ''}
+                                  {colour ? ` · Colour: ${colour}` : ""}
                                 </small>
                               </div>
                             </div>
@@ -2682,10 +2223,12 @@ export default function ClientHomePage() {
                     </section>
                   )}
 
-                  {(detailSpecs.platform || detailSpecs.lighting || (detailSpecs.addons?.length ?? 0) > 0) && (
+                  {(detailSpecs.platform ||
+                    detailSpecs.lighting ||
+                    (detailSpecs.addons?.length ?? 0) > 0) && (
                     <section className="spec-sec">
                       <h4>Included add-ons</h4>
-                      {detailSpecs.platform && typeof detailSpecs.platform === 'object' && (
+                      {detailSpecs.platform && typeof detailSpecs.platform === "object" && (
                         <div className="spec-row">
                           <div>
                             <b>Platform · {detailSpecs.platform.name}</b>
@@ -2693,7 +2236,11 @@ export default function ClientHomePage() {
                               {detailSpecs.platform.size} · {detailSpecs.platform.color}
                             </small>
                           </div>
-                          <strong>{detailSpecs.platform.price != null ? fmt(detailSpecs.platform.price) : 'Included'}</strong>
+                          <strong>
+                            {detailSpecs.platform.price != null
+                              ? fmt(detailSpecs.platform.price)
+                              : "Included"}
+                          </strong>
                         </div>
                       )}
                       {Array.isArray(detailSpecs.addons) &&
@@ -2703,16 +2250,20 @@ export default function ClientHomePage() {
                               <b>{a.title}</b>
                               {a.sub && <small>{a.sub}</small>}
                             </div>
-                            <strong>{a.price > 0 ? fmt(a.price) : 'Included'}</strong>
+                            <strong>{a.price > 0 ? fmt(a.price) : "Included"}</strong>
                           </div>
                         ))}
-                      {detailSpecs.lighting && typeof detailSpecs.lighting === 'object' && (
+                      {detailSpecs.lighting && typeof detailSpecs.lighting === "object" && (
                         <div className="spec-row">
                           <div>
                             <b>Lighting · {detailSpecs.lighting.name}</b>
                             <small>Quantity: {detailSpecs.lighting.qty}</small>
                           </div>
-                          <strong>{detailSpecs.lighting.price != null ? fmt(detailSpecs.lighting.price) : 'Included'}</strong>
+                          <strong>
+                            {detailSpecs.lighting.price != null
+                              ? fmt(detailSpecs.lighting.price)
+                              : "Included"}
+                          </strong>
                         </div>
                       )}
                     </section>
@@ -2725,7 +2276,7 @@ export default function ClientHomePage() {
                   <span className="spec-k">Starting price</span>
                   <b>
                     {fmtItem(detailItem.p)}
-                    {detailItem.u || ''}
+                    {detailItem.u || ""}
                   </b>
                   <small>Includes core base + confirmed add-ons</small>
                 </div>
@@ -2750,8 +2301,8 @@ export default function ClientHomePage() {
                     }}
                   >
                     {isItemInActiveEvent(detailItem.id)
-                      ? '✓ Added to quotation'
-                      : '+ Add to quotation'}
+                      ? "✓ Added to quotation"
+                      : "+ Add to quotation"}
                   </button>
                 </div>
               </div>
@@ -2760,172 +2311,13 @@ export default function ClientHomePage() {
         )}
       </dialog>
 
-      {/* 5. Plan Popup Dialog */}
-      <dialog
-        id="inq"
-        ref={planDialogRef}
-        onMouseDown={(e) => handleDialogMouseDown(e, planDialogRef)}
-        onClick={(e) => handleBackdropClick(e, planDialogRef)}
-        aria-labelledby="plan-title"
-      >
-        <div className="stepper" aria-label={`Step ${planStep + 1} of ${totalPlanSteps}`}>
-          <div className="stepper-meta">
-            <strong>
-              Step {planStep + 1} of {totalPlanSteps}
-            </strong>
-            <span>{planStep === 0 ? 'Choose events' : `${stepEventName} details`}</span>
-          </div>
-          <div className="stepper-track">
-            {stepLabels.map((_, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && (
-                  <div className={`step-bar${planStep >= i ? ' done' : ''}`}>
-                    <span />
-                  </div>
-                )}
-                <div
-                  className={`step-dot${
-                    planStep > i ? ' done' : planStep === i ? ' active' : ''
-                  }`}
-                >
-                  {planStep > i ? '✓' : i + 1}
-                </div>
-              </React.Fragment>
-            ))}
-          </div>
-          <div className="step-labels">
-            {stepLabels.map((l, i) => (
-              <span key={i} className={planStep === i ? 'active' : ''}>
-                {l}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <h2 className="serif" id="plan-title">
-          Plan your event
-        </h2>
-        <div
-          style={{
-            color: 'var(--mute)',
-            fontSize: '12px',
-            marginBottom: 16,
-          }}
-        >
-          Tell us about your celebration and our team will call you with ideas
-          and a quotation.
-        </div>
-
-        <form onSubmit={handlePlanSubmit}>
-          <div className="form-grid">
-            {planStep === 0 && (
-              <div className="form-col-full">
-                <label id="plan-events-label">
-                  Event type{' '}
-                  <span style={{ color: 'var(--mute)', fontWeight: 400 }}>
-                    (choose one or more)
-                  </span>
-                </label>
-                <div
-                  className="type-pills"
-                  role="group"
-                  aria-labelledby="plan-events-label"
-                >
-                  {EVENT_TYPES.map((type) => {
-                    const isSelected = selectedEventTypes.includes(type);
-                    return (
-                      <button
-                        key={type}
-                        type="button"
-                        className={`type-pill${isSelected ? ' selected' : ''}`}
-                        onClick={() => toggleEventType(type)}
-                        role="checkbox"
-                        aria-checked={isSelected}
-                      >
-                        {isSelected && (
-                          <span style={{ fontWeight: 700, fontSize: '11px' }}>
-                            ✓
-                          </span>
-                        )}
-                        <span>{type}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {stepEventName && (
-              <>
-                <div className="form-col-full">
-                  <label htmlFor={`date-${stepEventName}`} style={{ marginBottom: 10, display: 'block' }}>
-                    {stepEventName} date *
-                  </label>
-                  <EventDatePicker
-                    value={eventDates[stepEventName] || ''}
-                    onChange={(newIso) => {
-                      setEventDates((prev) => ({
-                        ...prev,
-                        [stepEventName]: newIso,
-                      }));
-                      setPlanError('');
-                    }}
-                    minDate={todayStr}
-                    eventName={stepEventName}
-                  />
-                </div>
-                <div className="form-col-full">
-                  <label htmlFor={`venue-${stepEventName}`}>
-                    {stepEventName} venue / location
-                  </label>
-                  <input
-                    id={`venue-${stepEventName}`}
-                    placeholder="e.g. Hotel Yak & Yeti, Kathmandu"
-                    value={eventVenues[stepEventName] || ''}
-                    onChange={(e) =>
-                      setEventVenues((prev) => ({
-                        ...prev,
-                        [stepEventName]: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </>
-            )}
-          </div>
-
-          {planError && (
-            <div
-              role="alert"
-              style={{
-                color: '#ef4444',
-                fontSize: '12px',
-                marginTop: 12,
-                fontWeight: 500,
-              }}
-            >
-              {planError}
-            </div>
-          )}
-
-          <div className="acts">
-            {planStep === 0 ? (
-              <button type="button" className="pill" onClick={closePlanModal}>
-                Cancel
-              </button>
-            ) : (
-              <button type="button" className="pill" onClick={handlePlanBack}>
-                ← Back
-              </button>
-            )}
-            <button type="submit" className="pill pri">
-              {planStep > 0 && isLastPlanStep
-                ? 'Start shopping →'
-                : 'Next →'}
-            </button>
-          </div>
-        </form>
-      </dialog>
+      {/* 5. Plan popup: centered dialog on desktop/tablet, draggable bottom sheet on phones */}
+      <PlanEventModal
+        isOpen={planOpen}
+        onClose={closePlanModal}
+        onComplete={handlePlanComplete}
+        initialEvents={plannedEvents}
+      />
 
       {/* 6. Review Popup Dialog */}
       <dialog
@@ -2938,9 +2330,9 @@ export default function ClientHomePage() {
         <div className="review-dialog-header">
           <div
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
               gap: 12,
             }}
           >
@@ -2950,8 +2342,8 @@ export default function ClientHomePage() {
               </h2>
               <div
                 style={{
-                  color: 'var(--mute)',
-                  fontSize: '12px',
+                  color: "var(--mute)",
+                  fontSize: "12px",
                   marginTop: 4,
                 }}
               >
@@ -2964,18 +2356,18 @@ export default function ClientHomePage() {
               onClick={closeReviewModal}
               aria-label="Close quotation"
               style={{
-                position: 'static',
+                position: "static",
                 flexShrink: 0,
                 width: 32,
                 height: 32,
-                borderRadius: '50%',
+                borderRadius: "50%",
                 border: 0,
-                background: '#f5eff2',
-                color: 'var(--mute)',
-                cursor: 'pointer',
-                display: 'grid',
-                placeItems: 'center',
-                fontSize: '14px',
+                background: "#f5eff2",
+                color: "var(--mute)",
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                fontSize: "14px",
                 lineHeight: 1,
               }}
             >
@@ -2988,9 +2380,9 @@ export default function ClientHomePage() {
           {plannedEvents.length === 0 || totalItemCount === 0 ? (
             <div
               style={{
-                padding: '36px 12px',
-                textAlign: 'center',
-                color: 'var(--mute)',
+                padding: "36px 12px",
+                textAlign: "center",
+                color: "var(--mute)",
               }}
             >
               No decorations added to quotation yet.
@@ -3008,13 +2400,11 @@ export default function ClientHomePage() {
                   <div key={ev.name} className="review-event-group">
                     <div className="review-event-header">
                       <div>
-                        <strong style={{ fontSize: '14px', color: 'var(--ink)' }}>
-                          {ev.name}
-                        </strong>
+                        <strong style={{ fontSize: "14px", color: "var(--ink)" }}>{ev.name}</strong>
                         <span
                           style={{
-                            fontSize: '12px',
-                            color: 'var(--mute)',
+                            fontSize: "12px",
+                            color: "var(--mute)",
                             marginLeft: 8,
                           }}
                         >
@@ -3023,30 +2413,30 @@ export default function ClientHomePage() {
                       </div>
                       <span
                         style={{
-                          fontSize: '11px',
-                          background: 'var(--card)',
-                          padding: '2px 8px',
+                          fontSize: "11px",
+                          background: "var(--card)",
+                          padding: "2px 8px",
                           borderRadius: 12,
-                          border: '1px solid var(--line)',
-                          color: 'var(--brand)',
+                          border: "1px solid var(--line)",
+                          color: "var(--brand)",
                           fontWeight: 600,
                         }}
                       >
-                        {items.length} item{items.length === 1 ? '' : 's'}
+                        {items.length} item{items.length === 1 ? "" : "s"}
                       </span>
                     </div>
 
                     {items.length === 0 ? (
                       <div
                         style={{
-                          fontSize: '12px',
-                          color: 'var(--mute)',
-                          padding: '6px 0',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          flexWrap: 'wrap',
-                          gap: '6px',
+                          fontSize: "12px",
+                          color: "var(--mute)",
+                          padding: "6px 0",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: "6px",
                         }}
                       >
                         <span>No decorations added for this event yet.</span>
@@ -3056,33 +2446,33 @@ export default function ClientHomePage() {
                             closeReviewModal();
                             setActiveEventName(ev.name);
                             decorSectionRef.current?.scrollIntoView({
-                              behavior: 'smooth',
+                              behavior: "smooth",
                             });
                           }}
                           style={{
-                            background: 'none',
+                            background: "none",
                             border: 0,
                             padding: 0,
-                            color: 'var(--brand)',
+                            color: "var(--brand)",
                             fontWeight: 600,
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                            textDecoration: 'underline',
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            textDecoration: "underline",
                           }}
                         >
                           + Add decorations
                         </button>
                       </div>
                     ) : (
-                      <ul className="list" style={{ margin: '6px 0' }}>
+                      <ul className="list" style={{ margin: "6px 0" }}>
                         {items.map((item) => (
                           <li
                             key={item.id}
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
+                              display: "flex",
+                              alignItems: "center",
                               gap: 12,
-                              padding: '8px 0',
+                              padding: "8px 0",
                             }}
                           >
                             <img
@@ -3092,19 +2482,17 @@ export default function ClientHomePage() {
                                 width: 38,
                                 height: 38,
                                 borderRadius: 8,
-                                objectFit: 'cover',
-                                flex: '0 0 38px',
+                                objectFit: "cover",
+                                flex: "0 0 38px",
                               }}
                             />
                             <span style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ display: 'block', fontWeight: 500 }}>
-                                {item.t}
-                              </span>
+                              <span style={{ display: "block", fontWeight: 500 }}>{item.t}</span>
                               <span
                                 style={{
-                                  display: 'block',
-                                  fontSize: '11.5px',
-                                  color: 'var(--brand)',
+                                  display: "block",
+                                  fontSize: "11.5px",
+                                  color: "var(--brand)",
                                   marginTop: 1,
                                 }}
                               >
@@ -3117,19 +2505,17 @@ export default function ClientHomePage() {
                               onClick={() => {
                                 setEventQuotes((prev) => ({
                                   ...prev,
-                                  [ev.name]: (prev[ev.name] || []).filter(
-                                    (id) => id !== item.id
-                                  ),
+                                  [ev.name]: (prev[ev.name] || []).filter((id) => id !== item.id),
                                 }));
                               }}
                               title="Remove item"
                               style={{
                                 border: 0,
-                                background: 'none',
-                                color: 'var(--mute)',
-                                cursor: 'pointer',
-                                padding: '2px 6px',
-                                fontSize: '14px',
+                                background: "none",
+                                color: "var(--mute)",
+                                cursor: "pointer",
+                                padding: "2px 6px",
+                                fontSize: "14px",
                               }}
                             >
                               ✕
@@ -3156,11 +2542,11 @@ export default function ClientHomePage() {
 
               <div
                 style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 0 4px',
-                  fontSize: '16px',
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "12px 0 4px",
+                  fontSize: "16px",
                 }}
               >
                 <span>Estimated Grand Total</span>
@@ -3179,29 +2565,23 @@ export default function ClientHomePage() {
           >
             Clear all
           </button>
-          <button
-            type="button"
-            className="pill review-close-btn"
-            onClick={closeReviewModal}
-          >
+          <button type="button" className="pill review-close-btn" onClick={closeReviewModal}>
             Close
           </button>
           {nextEmptyReviewEvent ? (
             <div
               className="review-send-btn-wrap"
               style={{
-                display: 'inline-flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end',
+                display: "inline-flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
                 gap: 4,
               }}
             >
               <button
                 type="button"
                 className="pill pri review-primary-btn"
-                onClick={() =>
-                  handleNextEmptyEventClick(nextEmptyReviewEvent.name)
-                }
+                onClick={() => handleNextEmptyEventClick(nextEmptyReviewEvent.name)}
                 disabled={totalItemCount === 0}
               >
                 Next: {nextEmptyReviewEvent.name} →
@@ -3211,13 +2591,13 @@ export default function ClientHomePage() {
                 className="review-skip-link"
                 onClick={() => handleSkipAndSend(nextEmptyReviewEvent.name)}
                 style={{
-                  background: 'none',
+                  background: "none",
                   border: 0,
-                  padding: '2px 0',
-                  color: 'var(--mute)',
-                  fontSize: '11px',
-                  textDecoration: 'underline',
-                  cursor: 'pointer',
+                  padding: "2px 0",
+                  color: "var(--mute)",
+                  fontSize: "11px",
+                  textDecoration: "underline",
+                  cursor: "pointer",
                 }}
               >
                 Skip {nextEmptyReviewEvent.name} and send
@@ -3246,29 +2626,25 @@ export default function ClientHomePage() {
         aria-labelledby="contact-title"
       >
         {isSubmitted ? (
-          <div style={{ textAlign: 'center', padding: '24px 8px' }}>
-            <div
-              style={{ fontSize: 52, marginBottom: 12 }}
-              role="img"
-              aria-label="Celebration"
-            >
+          <div style={{ textAlign: "center", padding: "24px 8px" }}>
+            <div style={{ fontSize: 52, marginBottom: 12 }} role="img" aria-label="Celebration">
               🎉
             </div>
-            <h2 className="serif" style={{ fontSize: 32, margin: '0 0 10px' }}>
+            <h2 className="serif" style={{ fontSize: 32, margin: "0 0 10px" }}>
               Thank you!
             </h2>
             <p
               style={{
-                color: 'var(--mute)',
+                color: "var(--mute)",
                 fontSize: 13,
                 maxWidth: 380,
-                margin: '0 auto 24px',
+                margin: "0 auto 24px",
                 lineHeight: 1.6,
               }}
             >
               {buyNowItem
                 ? `We have received your order for ${buyNowItem.t}. Our team will come to you with your quotation.`
-                : 'We have received your request. Our team will come to you with your quotation.'}
+                : "We have received your request. Our team will come to you with your quotation."}
             </p>
             <button type="button" className="pill pri" onClick={closeContactModal}>
               Close
@@ -3277,7 +2653,7 @@ export default function ClientHomePage() {
         ) : (
           <>
             <h2 className="serif" id="contact-title">
-              {buyNowItem ? 'Buy this decoration' : 'Finalize inquiry'}
+              {buyNowItem ? "Buy this decoration" : "Finalize inquiry"}
             </h2>
             {buyNowItem && (
               <div className="buy-summary">
@@ -3285,27 +2661,31 @@ export default function ClientHomePage() {
                 <div>
                   <b>{buyNowItem.t}</b>
                   <small>
-                    by {buyNowItem.ownerCompanyName || buyNowItem.vendor || COS[buyNowItem.id] || 'Everest Events & Decor'}
+                    by{" "}
+                    {buyNowItem.ownerCompanyName ||
+                      buyNowItem.vendor ||
+                      COS[buyNowItem.id] ||
+                      "Everest Events & Decor"}
                   </small>
                 </div>
                 <strong>
                   {fmtItem(buyNowItem.p)}
-                  {buyNowItem.u || ''}
+                  {buyNowItem.u || ""}
                 </strong>
               </div>
             )}
             <div
               className="contact-dialog-privacy"
               style={{
-                color: 'var(--mute)',
-                fontSize: '12px',
+                color: "var(--mute)",
+                fontSize: "12px",
                 marginBottom: 16,
                 lineHeight: 1.5,
               }}
             >
-              Please enter your contact details so our team can follow up with
-              your personalized proposal. Your name, phone number, and WhatsApp number
-              will be shared with the selected companies.
+              Please enter your contact details so our team can follow up with your personalized
+              proposal. Your name, phone number, and WhatsApp number will be shared with the
+              selected companies.
             </div>
 
             <form ref={contactFormRef} onSubmit={handleContactSubmit} className="contact-form">
@@ -3338,7 +2718,7 @@ export default function ClientHomePage() {
                 />
                 {phoneTouched && !isValidPhone(contactPhone) && (
                   <span className="contact-field-error" role="alert">
-                    {getPhoneError(contactPhone, 'Phone number')}
+                    {getPhoneError(contactPhone, "Phone number")}
                   </span>
                 )}
               </div>
@@ -3358,16 +2738,20 @@ export default function ClientHomePage() {
                   onBlur={() => setWhatsappTouched(true)}
                   readOnly={whatsappSameAsPhone}
                   disabled={whatsappSameAsPhone}
-                  className={whatsappSameAsPhone ? 'contact-input-disabled' : ''}
+                  className={whatsappSameAsPhone ? "contact-input-disabled" : ""}
                   aria-invalid={
                     (!whatsappSameAsPhone ? whatsappTouched : phoneTouched) &&
                     !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp)
                   }
                 />
-                {((!whatsappSameAsPhone && whatsappTouched) || (whatsappSameAsPhone && phoneTouched)) &&
+                {((!whatsappSameAsPhone && whatsappTouched) ||
+                  (whatsappSameAsPhone && phoneTouched)) &&
                   !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp) && (
                     <span className="contact-field-error" role="alert">
-                      {getPhoneError(whatsappSameAsPhone ? contactPhone : contactWhatsapp, 'WhatsApp number')}
+                      {getPhoneError(
+                        whatsappSameAsPhone ? contactPhone : contactWhatsapp,
+                        "WhatsApp number",
+                      )}
                     </span>
                   )}
               </div>
@@ -3389,12 +2773,7 @@ export default function ClientHomePage() {
                 <>
                   <div>
                     <label htmlFor="contact-date">Event date (optional)</label>
-                    <input
-                      id="contact-date"
-                      name="date"
-                      type="date"
-                      min={todayStr}
-                    />
+                    <input id="contact-date" name="date" type="date" min={todayStr} />
                   </div>
                   <div>
                     <label htmlFor="contact-venue">Venue / location (optional)</label>
@@ -3415,26 +2794,22 @@ export default function ClientHomePage() {
                   rows={3}
                   placeholder="Any extra preferences, timing, or questions..."
                   style={{
-                    minHeight: '84px',
-                    maxHeight: '240px',
-                    resize: 'vertical',
-                    overflowY: 'auto',
+                    minHeight: "84px",
+                    maxHeight: "240px",
+                    resize: "vertical",
+                    overflowY: "auto",
                   }}
                 />
               </div>
 
               {submitError && (
-                <p role="alert" style={{ color: '#c0392b', fontSize: 13, margin: '0 0 12px' }}>
+                <p role="alert" style={{ color: "#c0392b", fontSize: 13, margin: "0 0 12px" }}>
                   {submitError}
                 </p>
               )}
 
               <div className="acts">
-                <button
-                  type="button"
-                  className="pill"
-                  onClick={closeContactModal}
-                >
+                <button type="button" className="pill" onClick={closeContactModal}>
                   Cancel
                 </button>
                 <button
@@ -3447,7 +2822,7 @@ export default function ClientHomePage() {
                     !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp)
                   }
                 >
-                  {isSending ? 'Sending…' : buyNowItem ? 'Place order' : 'Send request'}
+                  {isSending ? "Sending…" : buyNowItem ? "Place order" : "Send request"}
                 </button>
               </div>
             </form>
@@ -3456,159 +2831,28 @@ export default function ClientHomePage() {
       </dialog>
 
       {/* Mobile Filter Bottom Sheet Modal */}
-      {filterSheetOpen && (
-        <div
-          className="filter-sheet-overlay"
-          onClick={() => setFilterSheetOpen(false)}
-        >
-          <div
-            className="filter-sheet"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Filter and sort decorations"
-          >
-            <div className="sheet-handle-bar">
-              <div className="sheet-handle" />
-            </div>
+      <FilterBottomSheet
+        isOpen={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        fCompanies={fCompanies}
+        setFCompanies={setFCompanies}
+        companyOptions={companyOptions}
+        fPrice={fPrice}
+        setFPrice={setFPrice}
+        PRICE_RANGES={PRICE_RANGES}
+      />
 
-            <div className="sheet-header">
-              <h3 className="serif">Filter &amp; Sort</h3>
-              <button
-                type="button"
-                className="sheet-close"
-                onClick={() => setFilterSheetOpen(false)}
-                aria-label="Close filter sheet"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="sheet-body">
-              {/* Company */}
-              <div className="sheet-sec">
-                <span className="sheet-sec-title">Company</span>
-                <div className="sheet-pills">
-                  <button
-                    type="button"
-                    className={`sheet-pill${!fCompany ? ' on' : ''}`}
-                    onClick={() => setFCompany('')}
-                  >
-                    All Companies
-                  </button>
-                  {companyOptions.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className={`sheet-pill${fCompany === c ? ' on' : ''}`}
-                      onClick={() => setFCompany(c)}
-                    >
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Price Range */}
-              <div className="sheet-sec">
-                <span className="sheet-sec-title">Price Range</span>
-                <div className="sheet-pills">
-                  <button
-                    type="button"
-                    className={`sheet-pill${!fPrice ? ' on' : ''}`}
-                    onClick={() => setFPrice('')}
-                  >
-                    Any Price
-                  </button>
-                  {PRICE_RANGES.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      className={`sheet-pill${fPrice === r.id ? ' on' : ''}`}
-                      onClick={() => setFPrice(r.id)}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Sort by */}
-              <div className="sheet-sec">
-                <span className="sheet-sec-title">Sort By</span>
-                <div className="sheet-pills">
-                  {[
-                    { id: 'featured', label: 'Featured' },
-                    { id: 'low', label: 'Price: Low to High' },
-                    { id: 'high', label: 'Price: High to Low' },
-                    { id: 'name', label: 'Name: A - Z' },
-                  ].map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className={`sheet-pill${sortBy === s.id ? ' on' : ''}`}
-                      onClick={() => setSortBy(s.id)}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Styles */}
-              {styleOptions.length > 0 && (
-                <div className="sheet-sec">
-                  <span className="sheet-sec-title">Style</span>
-                  <div className="sheet-pills">
-                    <button
-                      type="button"
-                      className={`sheet-pill${!fStyle ? ' on' : ''}`}
-                      onClick={() => setFStyle('')}
-                    >
-                      All Styles
-                    </button>
-                    {styleOptions.map((st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        className={`sheet-pill${fStyle === st ? ' on' : ''}`}
-                        onClick={() => setFStyle(st)}
-                      >
-                        {st}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="sheet-footer">
-              {(fCompany || fPrice || fStyle || sortBy !== 'featured') && (
-                <button
-                  type="button"
-                  className="sheet-reset"
-                  onClick={() => {
-                    setFCompany('');
-                    setFPrice('');
-                    setFStyle('');
-                    setFColor('');
-                    setSortBy('featured');
-                  }}
-                >
-                  Reset
-                </button>
-              )}
-              <button
-                type="button"
-                className="pill pri sheet-apply"
-                onClick={() => setFilterSheetOpen(false)}
-              >
-                Apply Filters ({filteredItems.length})
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Mobile Sort Bottom Sheet Modal */}
+      <SortBottomSheet
+        isOpen={sortSheetOpen}
+        onClose={() => setSortSheetOpen(false)}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        fStyle={fStyle}
+        setFStyle={setFStyle}
+        styleOptions={styleOptions}
+        setFColor={setFColor}
+      />
 
       {/* Preview Send to Companies & Confirmation Modal */}
       {showSendRequestPreview && (

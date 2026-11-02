@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
-  Link,
   createRootRouteWithContext,
   useRouter,
   HeadContent,
@@ -51,9 +50,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content: "Decoration business operations and function planning.",
       },
       { property: "og:type", content: "website" },
-      { property: "og:image", content: "/assets/app-logo.png" },
+      // Larger copy for link previews; the 256px app-logo.png is for in-app use
+      { property: "og:image", content: "/assets/app-logo-512.png" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:image", content: "/assets/app-logo.png" },
+      { name: "twitter:image", content: "/assets/app-logo-512.png" },
     ],
     links: [
       {

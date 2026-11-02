@@ -13,11 +13,9 @@
 
 import {
   getDecorItemBreakdown,
-  generateDecorSummary,
   validateBreakdownSum,
   formatNepaliNumber,
   toTitleCase,
-  findCatalogSetup,
 } from "./decor-item-breakdown";
 import { INITIAL_DECORATION_SETUPS } from "./decoration-setups";
 

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { logoutCompany, setActiveCompany, type CompanySummary } from "@/lib/company-profile";
-import { fetchCompanyProfileFromSupabase, listCompaniesFromSupabase } from "@/lib/supabase-service";
+import { getCompanyListCached, getCompanyProfileCached } from "@/lib/cached-company-data";
 
 /** Testing-stage "login": existing companies search and click; new companies go through the setup form. */
 export function CompanyPicker() {
@@ -18,7 +18,7 @@ export function CompanyPicker() {
 
   useEffect(() => {
     let alive = true;
-    listCompaniesFromSupabase()
+    getCompanyListCached()
       .then((list) => alive && setCompanies(list))
       .catch(() => alive && setFailed(true))
       .finally(() => alive && setLoading(false));
@@ -38,7 +38,8 @@ export function CompanyPicker() {
   const open = async (id: string) => {
     setOpening(id);
     try {
-      const profile = await fetchCompanyProfileFromSupabase(id);
+      // Always confirm the profile from the database when opening an account
+      const profile = await getCompanyProfileCached(id, { force: true });
       setActiveCompany(id, profile);
       navigate({ to: "/company" });
     } catch {

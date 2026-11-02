@@ -22,32 +22,32 @@ export interface StoredEnquiryItem {
   updated_at: string;
 }
 
-export const ENQUIRY_STORAGE_KEY = 'decoration_app_enquiries_v1';
+export const ENQUIRY_STORAGE_KEY = "decoration_app_enquiries_v1";
 
 export class EnquiryRepository {
   private readonly storageKey = ENQUIRY_STORAGE_KEY;
 
   getAll(): StoredEnquiryItem[] {
     try {
-      if (typeof window === 'undefined') return [];
+      if (typeof window === "undefined") return [];
       const raw = localStorage.getItem(this.storageKey);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : [];
     } catch (err) {
-      console.warn('[EnquiryRepository] Error reading enquiries from localStorage:', err);
+      console.warn("[EnquiryRepository] Error reading enquiries from localStorage:", err);
       return [];
     }
   }
 
   save(items: StoredEnquiryItem[]): boolean {
     try {
-      if (typeof window === 'undefined') return false;
+      if (typeof window === "undefined") return false;
       localStorage.setItem(this.storageKey, JSON.stringify(items));
-      window.dispatchEvent(new Event('enquiries-synced'));
+      window.dispatchEvent(new Event("enquiries-synced"));
       return true;
     } catch (err) {
-      console.error('[EnquiryRepository] Error saving enquiries to localStorage:', err);
+      console.error("[EnquiryRepository] Error saving enquiries to localStorage:", err);
       return false;
     }
   }

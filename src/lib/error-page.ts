@@ -1,7 +1,7 @@
 export function renderErrorPage(
   status = 500,
   title = "Something went wrong",
-  message = "An unexpected error occurred while processing your request. Please try again or head back home."
+  message = "An unexpected error occurred while processing your request. Please try again or head back home.",
 ): string {
   return `<!doctype html>
 <html lang="en">

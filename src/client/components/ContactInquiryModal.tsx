@@ -1,20 +1,24 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { submitEnquiry } from '../api';
-import { saveStoredQuotation, type PlannedEvent, type StoredQuotation } from '../lib/quotationStorage';
-import type { DecorationItem } from '../ClientHomePage';
+import React, { useRef, useEffect, useState } from "react";
+import { submitEnquiry } from "../api";
+import {
+  saveStoredQuotation,
+  type PlannedEvent,
+  type StoredQuotation,
+} from "../lib/quotationStorage";
+import type { DecorationItem } from "../ClientHomePage";
 
 export interface BuyNowDecorationItem {
   id: number | string;
-  sid?: string;
+  sid?: string | undefined;
   t: string;
   p: number;
-  u?: string;
+  u?: string | undefined;
   img: string;
-  cat?: string;
-  d?: string;
-  vendor?: string;
-  ownerCompanyId?: string;
-  ownerCompanyName?: string;
+  cat?: string | undefined;
+  d?: string | undefined;
+  vendor?: string | undefined;
+  ownerCompanyId?: string | undefined;
+  ownerCompanyName?: string | undefined;
 }
 
 export interface ContactInquiryModalProps {
@@ -29,7 +33,7 @@ export interface ContactInquiryModalProps {
   onSuccess?: () => void;
 }
 
-const fmt = (n: number) => 'Rs. ' + n.toLocaleString('en-IN');
+const fmt = (n: number) => "Rs. " + n.toLocaleString("en-IN");
 
 export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
   isOpen,
@@ -42,21 +46,21 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
 }) => {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
 
-  const [contactName, setContactName] = useState('');
-  const [contactPhone, setContactPhone] = useState('');
-  const [contactWhatsapp, setContactWhatsapp] = useState('');
+  const [contactName, setContactName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactWhatsapp, setContactWhatsapp] = useState("");
   const [whatsappSameAsPhone, setWhatsappSameAsPhone] = useState(true);
   const [phoneTouched, setPhoneTouched] = useState(false);
   const [whatsappTouched, setWhatsappTouched] = useState(false);
 
   // Buy now specific fields
-  const [eventDate, setEventDate] = useState('');
-  const [eventVenue, setEventVenue] = useState('');
-  const [contactMessage, setContactMessage] = useState('');
+  const [eventDate, setEventDate] = useState("");
+  const [eventVenue, setEventVenue] = useState("");
+  const [contactMessage, setContactMessage] = useState("");
 
   const [isSending, setIsSending] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -119,20 +123,20 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
     const trimmed = val.trim();
     if (!trimmed) return false;
     if (!/^\+?[0-9]+$/.test(trimmed)) return false;
-    const digits = trimmed.startsWith('+') ? trimmed.slice(1) : trimmed;
+    const digits = trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
     if (digits.length === 10) return true;
-    if (digits.length === 13 && digits.startsWith('977')) return true;
+    if (digits.length === 13 && digits.startsWith("977")) return true;
     return false;
   };
 
   const getPhoneError = (val: string, label: string): string => {
     const trimmed = val.trim();
     if (!trimmed) return `${label} is required`;
-    if (!/^\+?[0-9]+$/.test(trimmed)) return 'Digits only (leading + allowed)';
-    const digits = trimmed.startsWith('+') ? trimmed.slice(1) : trimmed;
-    if (digits.length === 10) return '';
-    if (digits.length === 13 && digits.startsWith('977')) return '';
-    return 'Enter a valid 10-digit number or +977 format';
+    if (!/^\+?[0-9]+$/.test(trimmed)) return "Digits only (leading + allowed)";
+    const digits = trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
+    if (digits.length === 10) return "";
+    if (digits.length === 13 && digits.startsWith("977")) return "";
+    return "Enter a valid 10-digit number or +977 format";
   };
 
   const handlePhoneChange = (val: string) => {
@@ -150,17 +154,17 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
   };
 
   const resetForm = () => {
-    setContactName('');
-    setContactPhone('');
-    setContactWhatsapp('');
+    setContactName("");
+    setContactPhone("");
+    setContactWhatsapp("");
     setWhatsappSameAsPhone(true);
     setPhoneTouched(false);
     setWhatsappTouched(false);
-    setEventDate('');
-    setEventVenue('');
-    setContactMessage('');
+    setEventDate("");
+    setEventVenue("");
+    setContactMessage("");
     setIsSubmitted(false);
-    setSubmitError('');
+    setSubmitError("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -174,13 +178,13 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
     }
 
     setIsSending(true);
-    setSubmitError('');
+    setSubmitError("");
 
     try {
       if (buyNowItem) {
         // Direct single-item order
         await submitEnquiry({
-          type: 'direct-order',
+          type: "direct-order",
           name: contactName.trim(),
           phone: contactPhone.trim(),
           whatsappNumber: effectiveWa.trim(),
@@ -188,19 +192,19 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
           message: contactMessage.trim(),
           venue: eventVenue.trim(),
           grandTotal: buyNowItem.p,
-          companies: [buyNowItem.ownerCompanyName || buyNowItem.vendor || 'Everest Events & Decor'],
+          companies: [buyNowItem.ownerCompanyName || buyNowItem.vendor || "Everest Events & Decor"],
           events: [
             {
-              name: 'Direct Decoration Purchase',
-              date: eventDate || (new Date().toISOString().split('T')[0] ?? ''),
-              venue: eventVenue.trim() || 'Kathmandu',
+              name: "Direct Decoration Purchase",
+              date: eventDate || (new Date().toISOString().split("T")[0] ?? ""),
+              venue: eventVenue.trim() || "Kathmandu",
               subtotal: buyNowItem.p,
               decorations: [
                 {
                   id: buyNowItem.sid || String(buyNowItem.id),
                   decorationId: buyNowItem.sid || String(buyNowItem.id),
                   title: buyNowItem.t,
-                  category: buyNowItem.cat || '',
+                  category: buyNowItem.cat || "",
                   price: buyNowItem.p,
                   image: buyNowItem.img,
                   vendor: buyNowItem.vendor,
@@ -225,8 +229,8 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
               .filter((i): i is DecorationItem => Boolean(i));
             return {
               name: ev.name,
-              date: ev.date || (new Date().toISOString().split('T')[0] ?? ''),
-              venue: ev.venue || 'Kathmandu',
+              date: ev.date || (new Date().toISOString().split("T")[0] ?? ""),
+              venue: ev.venue || "Kathmandu",
               subtotal: evItems.reduce((sum, it) => sum + it.p, 0),
               decorations: evItems.map((it) => ({
                 id: it.sid || String(it.id),
@@ -235,7 +239,7 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
                 category: it.cat,
                 price: it.p,
                 image: it.img,
-                vendor: it.ownerCompanyName || it.vendor || 'Everest Events & Decor',
+                vendor: it.ownerCompanyName || it.vendor || "Everest Events & Decor",
                 ownerCompanyId: it.ownerCompanyId,
                 ownerCompanyName: it.ownerCompanyName || it.vendor,
                 description: it.d,
@@ -252,19 +256,21 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
             : Array.from(
                 new Set(
                   eventsPayload.flatMap((ev) =>
-                    ev.decorations.map((d) => d.ownerCompanyName || d.vendor || 'Everest Events & Decor')
-                  )
-                )
+                    ev.decorations.map(
+                      (d) => d.ownerCompanyName || d.vendor || "Everest Events & Decor",
+                    ),
+                  ),
+                ),
               );
 
         await submitEnquiry({
-          type: 'quotation-request',
+          type: "quotation-request",
           name: contactName.trim(),
           phone: contactPhone.trim(),
           whatsappNumber: effectiveWa.trim(),
           whatsappSameAsPhone,
           message: contactMessage.trim(),
-          venue: quotation?.plannedEvents[0]?.venue ?? 'Kathmandu',
+          venue: quotation?.plannedEvents[0]?.venue ?? "Kathmandu",
           grandTotal: totalQuoteSum,
           companies: targetCompanies,
           events: eventsPayload,
@@ -278,8 +284,10 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
       setIsSending(false);
       onSuccess?.();
     } catch (err: any) {
-      console.error('Submission failed:', err);
-      setSubmitError(err.message || 'Failed to submit request. Please try again or call us directly.');
+      console.error("Submission failed:", err);
+      setSubmitError(
+        err.message || "Failed to submit request. Please try again or call us directly.",
+      );
       setIsSending(false);
     }
   };
@@ -302,29 +310,25 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
       aria-labelledby="contact-title"
     >
       {isSubmitted ? (
-        <div style={{ textAlign: 'center', padding: '24px 8px' }}>
-          <div
-            style={{ fontSize: 52, marginBottom: 12 }}
-            role="img"
-            aria-label="Celebration"
-          >
+        <div style={{ textAlign: "center", padding: "24px 8px" }}>
+          <div style={{ fontSize: 52, marginBottom: 12 }} role="img" aria-label="Celebration">
             🎉
           </div>
-          <h2 className="serif" style={{ fontSize: 32, margin: '0 0 10px' }}>
+          <h2 className="serif" style={{ fontSize: 32, margin: "0 0 10px" }}>
             Thank you!
           </h2>
           <p
             style={{
-              color: 'var(--mute)',
+              color: "var(--mute)",
               fontSize: 13,
               maxWidth: 380,
-              margin: '0 auto 24px',
+              margin: "0 auto 24px",
               lineHeight: 1.6,
             }}
           >
             {buyNowItem
               ? `We have received your order for ${buyNowItem.t}. Our team will come to you with your quotation.`
-              : 'We have received your request. Our team will come to you with your quotation.'}
+              : "We have received your request. Our team will come to you with your quotation."}
           </p>
           <button type="button" className="pill pri" onClick={handleClose}>
             Close
@@ -333,7 +337,7 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
       ) : (
         <>
           <h2 className="serif" id="contact-title">
-            {buyNowItem ? 'Buy this decoration' : 'Finalize inquiry'}
+            {buyNowItem ? "Buy this decoration" : "Finalize inquiry"}
           </h2>
 
           {buyNowItem && (
@@ -342,18 +346,18 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
                 src={buyNowItem.img}
                 alt={buyNowItem.t}
                 onError={(e) => {
-                  (e.currentTarget as HTMLElement).style.display = 'none';
+                  (e.currentTarget as HTMLElement).style.display = "none";
                 }}
               />
               <div>
                 <b>{buyNowItem.t}</b>
                 <small>
-                  by {buyNowItem.ownerCompanyName || buyNowItem.vendor || 'Everest Events & Decor'}
+                  by {buyNowItem.ownerCompanyName || buyNowItem.vendor || "Everest Events & Decor"}
                 </small>
               </div>
               <strong>
                 {fmt(buyNowItem.p)}
-                {buyNowItem.u || ''}
+                {buyNowItem.u || ""}
               </strong>
             </div>
           )}
@@ -361,15 +365,15 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
           <div
             className="contact-dialog-privacy"
             style={{
-              color: 'var(--mute)',
-              fontSize: '12px',
+              color: "var(--mute)",
+              fontSize: "12px",
               marginBottom: 16,
               lineHeight: 1.5,
             }}
           >
-            Please enter your contact details so our team can follow up with
-            your personalized proposal. Your name, phone number, and WhatsApp number
-            will be shared with the selected companies.
+            Please enter your contact details so our team can follow up with your personalized
+            proposal. Your name, phone number, and WhatsApp number will be shared with the selected
+            companies.
           </div>
 
           <form onSubmit={handleSubmit} className="contact-form">
@@ -402,7 +406,7 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
               />
               {phoneTouched && !isValidPhone(contactPhone) && (
                 <span className="contact-field-error" role="alert">
-                  {getPhoneError(contactPhone, 'Phone number')}
+                  {getPhoneError(contactPhone, "Phone number")}
                 </span>
               )}
             </div>
@@ -422,16 +426,20 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
                 onBlur={() => setWhatsappTouched(true)}
                 readOnly={whatsappSameAsPhone}
                 disabled={whatsappSameAsPhone}
-                className={whatsappSameAsPhone ? 'contact-input-disabled' : ''}
+                className={whatsappSameAsPhone ? "contact-input-disabled" : ""}
                 aria-invalid={
                   (!whatsappSameAsPhone ? whatsappTouched : phoneTouched) &&
                   !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp)
                 }
               />
-              {((!whatsappSameAsPhone && whatsappTouched) || (whatsappSameAsPhone && phoneTouched)) &&
+              {((!whatsappSameAsPhone && whatsappTouched) ||
+                (whatsappSameAsPhone && phoneTouched)) &&
                 !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp) && (
                   <span className="contact-field-error" role="alert">
-                    {getPhoneError(whatsappSameAsPhone ? contactPhone : contactWhatsapp, 'WhatsApp number')}
+                    {getPhoneError(
+                      whatsappSameAsPhone ? contactPhone : contactWhatsapp,
+                      "WhatsApp number",
+                    )}
                   </span>
                 )}
             </div>
@@ -484,26 +492,22 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
                 value={contactMessage}
                 onChange={(e) => setContactMessage(e.target.value)}
                 style={{
-                  minHeight: '84px',
-                  maxHeight: '240px',
-                  resize: 'vertical',
-                  overflowY: 'auto',
+                  minHeight: "84px",
+                  maxHeight: "240px",
+                  resize: "vertical",
+                  overflowY: "auto",
                 }}
               />
             </div>
 
             {submitError && (
-              <p role="alert" style={{ color: '#c0392b', fontSize: 13, margin: '0 0 12px' }}>
+              <p role="alert" style={{ color: "#c0392b", fontSize: 13, margin: "0 0 12px" }}>
                 {submitError}
               </p>
             )}
 
             <div className="acts">
-              <button
-                type="button"
-                className="pill"
-                onClick={handleClose}
-              >
+              <button type="button" className="pill" onClick={handleClose}>
                 Cancel
               </button>
               <button
@@ -516,7 +520,7 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
                   !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp)
                 }
               >
-                {isSending ? 'Sending…' : buyNowItem ? 'Place order' : 'Send request'}
+                {isSending ? "Sending…" : buyNowItem ? "Place order" : "Send request"}
               </button>
             </div>
           </form>
@@ -527,4 +531,3 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
 };
 
 export default ContactInquiryModal;
-

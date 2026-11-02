@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
 export interface CompanyItem {
   id: number | string;
@@ -32,10 +32,7 @@ export const SendToCompanies: React.FC<SendToCompaniesProps> = ({
 }) => {
   // Support internal state if un-controlled for seamless preview
   const isControlled = controlledSelected !== undefined;
-  const [internalSelected, setInternalSelected] = useState<(string | number)[]>([
-    'c1',
-    'c2',
-  ]);
+  const [internalSelected, setInternalSelected] = useState<(string | number)[]>(["c1", "c2"]);
 
   const selectedList = isControlled ? controlledSelected : internalSelected;
 
@@ -45,16 +42,16 @@ export const SendToCompanies: React.FC<SendToCompaniesProps> = ({
     }
     if (!isControlled) {
       setInternalSelected((prev) =>
-        prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+        prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
       );
     }
   };
 
   const selectedCount = selectedList.length;
 
-  let buttonLabel = 'Select a company';
+  let buttonLabel = "Select a company";
   if (selectedCount === 1) {
-    buttonLabel = 'Send request';
+    buttonLabel = "Send request";
   } else if (selectedCount > 1) {
     buttonLabel = `Send request to ${selectedCount} companies`;
   }
@@ -66,16 +63,14 @@ export const SendToCompanies: React.FC<SendToCompaniesProps> = ({
         <h2 className="send-to-title serif">
           Send my request <em className="send-to-title-accent">to</em>
         </h2>
-        <p className="send-to-subtitle">
-          Choose who should prepare your quotation.
-        </p>
+        <p className="send-to-subtitle">Choose who should prepare your quotation.</p>
       </div>
 
       {/* Company Cards List */}
       <div className="send-to-list" role="group" aria-label="Select companies">
         {groups.map((group) => {
           const isSelected = selectedList.includes(group.id);
-          const initial = (group.name || 'C').trim().charAt(0).toUpperCase();
+          const initial = (group.name || "C").trim().charAt(0).toUpperCase();
 
           // Thumbnail logic: up to 4 thumbnails with "+N" tile if more
           const hasMore = group.items.length > 4;
@@ -83,10 +78,7 @@ export const SendToCompanies: React.FC<SendToCompaniesProps> = ({
           const overflowCount = hasMore ? group.items.length - 3 : 0;
 
           return (
-            <div
-              key={group.id}
-              className={`company-card ${isSelected ? 'selected' : ''}`}
-            >
+            <div key={group.id} className={`company-card ${isSelected ? "selected" : ""}`}>
               {/* Hidden Checkbox covering entire card for complete tap target & accessibility */}
               <input
                 type="checkbox"
@@ -108,7 +100,7 @@ export const SendToCompanies: React.FC<SendToCompaniesProps> = ({
                         alt=""
                         className="company-logo-img"
                         onError={(e) => {
-                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.style.display = "none";
                         }}
                       />
                     ) : null}
@@ -118,15 +110,14 @@ export const SendToCompanies: React.FC<SendToCompaniesProps> = ({
                   <div className="company-text-meta">
                     <h3 className="company-name">{group.name}</h3>
                     <span className="company-decor-count">
-                      {group.items.length}{' '}
-                      {group.items.length === 1 ? 'decoration' : 'decorations'}
+                      {group.items.length} {group.items.length === 1 ? "decoration" : "decorations"}
                     </span>
                   </div>
                 </div>
 
                 {/* Circular Check Indicator */}
                 <div
-                  className={`company-check-indicator ${isSelected ? 'checked' : ''}`}
+                  className={`company-check-indicator ${isSelected ? "checked" : ""}`}
                   aria-hidden="true"
                 >
                   {isSelected ? (
@@ -234,4 +225,3 @@ export const SendToCompanies: React.FC<SendToCompaniesProps> = ({
 };
 
 export default SendToCompanies;
-

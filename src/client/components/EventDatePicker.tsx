@@ -1,65 +1,65 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, CalendarCheck } from 'lucide-react';
-import NepaliDate, { dateConfigMap } from 'nepali-date-converter';
-import './EventDatePicker.css';
+import React, { useState, useMemo, useEffect } from "react";
+import { ChevronLeft, ChevronRight, CalendarCheck } from "lucide-react";
+import NepaliDate, { dateConfigMap } from "nepali-date-converter";
+import "./EventDatePicker.css";
 
 export interface EventDatePickerProps {
   value: string; // ISO date 'YYYY-MM-DD' or ''
   onChange: (dateIso: string) => void;
   minDate?: string | undefined; // Optional min date ISO string (e.g. today)
   eventName?: string | undefined;
-  defaultSystem?: ('AD' | 'BS') | undefined;
+  defaultSystem?: ("AD" | "BS") | undefined;
 }
 
 const BS_MONTH_KEYS = [
-  'Baisakh',
-  'Jestha',
-  'Asar',
-  'Shrawan',
-  'Bhadra',
-  'Aswin',
-  'Kartik',
-  'Mangsir',
-  'Poush',
-  'Magh',
-  'Falgun',
-  'Chaitra',
+  "Baisakh",
+  "Jestha",
+  "Asar",
+  "Shrawan",
+  "Bhadra",
+  "Aswin",
+  "Kartik",
+  "Mangsir",
+  "Poush",
+  "Magh",
+  "Falgun",
+  "Chaitra",
 ];
 
 const BS_MONTH_DISPLAY = [
-  'Baisakh',
-  'Jestha',
-  'Ashadh',
-  'Shrawan',
-  'Bhadra',
-  'Ashwin',
-  'Kartik',
-  'Mangsir',
-  'Poush',
-  'Magh',
-  'Falgun',
-  'Chaitra',
+  "Baisakh",
+  "Jestha",
+  "Ashadh",
+  "Shrawan",
+  "Bhadra",
+  "Ashwin",
+  "Kartik",
+  "Mangsir",
+  "Poush",
+  "Magh",
+  "Falgun",
+  "Chaitra",
 ];
 
 const AD_MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
-const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
 function pad2(n: number): string {
-  return String(n).padStart(2, '0');
+  return String(n).padStart(2, "0");
 }
 
 function toIsoString(date: Date): string {
@@ -67,13 +67,13 @@ function toIsoString(date: Date): string {
 }
 
 function parseIso(iso: string): Date {
-  const [y, m, d] = iso.split('-').map(Number);
+  const [y, m, d] = iso.split("-").map(Number);
   return new Date(y || 1970, (m || 1) - 1, d || 1);
 }
 
 function getBsDaysInMonth(year: number, month: number): number {
   const yearConfig = (dateConfigMap as Record<string, Record<string, number>>)[String(year)];
-  const key = BS_MONTH_KEYS[month] || '';
+  const key = BS_MONTH_KEYS[month] || "";
   return yearConfig?.[key] ?? 30;
 }
 
@@ -89,7 +89,7 @@ function getBsSubtitle(bsYear: number, bsMonth: number, daysInMonth: number): st
     if (y1 === y2) return `${m1}-${m2} ${y1}`;
     return `${m1} ${y1} - ${m2} ${y2}`;
   } catch {
-    return '';
+    return "";
   }
 }
 
@@ -107,19 +107,19 @@ function getAdSubtitle(adYear: number, adMonth: number, daysInMonth: number): st
     if (y1 === y2) return `${m1}-${m2} ${y1}`;
     return `${m1} ${y1} - ${m2} ${y2}`;
   } catch {
-    return '';
+    return "";
   }
 }
 
 export function formatAdDate(iso: string): string {
-  if (!iso) return '';
+  if (!iso) return "";
   try {
     const d = parseIso(iso);
-    return d.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
+    return d.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     });
   } catch {
     return iso;
@@ -127,13 +127,13 @@ export function formatAdDate(iso: string): string {
 }
 
 export function formatBsDate(iso: string): string {
-  if (!iso) return '';
+  if (!iso) return "";
   try {
     const d = parseIso(iso);
     const bs = new NepaliDate(d);
-    return `${bs.getDate()} ${BS_MONTH_DISPLAY[bs.getMonth()] || ''} ${bs.getYear()} BS`;
+    return `${bs.getDate()} ${BS_MONTH_DISPLAY[bs.getMonth()] || ""} ${bs.getYear()} BS`;
   } catch {
-    return '';
+    return "";
   }
 }
 
@@ -141,9 +141,9 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
   value,
   onChange,
   minDate,
-  defaultSystem = 'BS',
+  defaultSystem = "BS",
 }) => {
-  const [system, setSystem] = useState<'AD' | 'BS'>(defaultSystem);
+  const [system, setSystem] = useState<"AD" | "BS">(defaultSystem);
 
   const today = useMemo(() => new Date(), []);
   const todayIso = useMemo(() => toIsoString(today), [today]);
@@ -194,10 +194,10 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
   }, [value]);
 
   // Switching system synchronizes viewed month
-  const handleSwitchSystem = (newSystem: 'AD' | 'BS') => {
+  const handleSwitchSystem = (newSystem: "AD" | "BS") => {
     if (newSystem === system) return;
 
-    if (newSystem === 'AD') {
+    if (newSystem === "AD") {
       // Convert current BS midpoint to AD
       try {
         const midJs = new NepaliDate(bsYear, bsMonth, 15).toJsDate();
@@ -221,7 +221,7 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
 
   // Previous month navigation
   const handlePrevMonth = () => {
-    if (system === 'BS') {
+    if (system === "BS") {
       if (bsMonth === 0) {
         setBsMonth(11);
         setBsYear((y) => y - 1);
@@ -240,7 +240,7 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
 
   // Next month navigation
   const handleNextMonth = () => {
-    if (system === 'BS') {
+    if (system === "BS") {
       if (bsMonth === 11) {
         setBsMonth(0);
         setBsYear((y) => y + 1);
@@ -259,7 +259,7 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
 
   // Compute grid depending on system
   const gridData = useMemo(() => {
-    if (system === 'BS') {
+    if (system === "BS") {
       const daysCount = getBsDaysInMonth(bsYear, bsMonth);
       let lead = 0;
       try {
@@ -270,18 +270,18 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
 
       const days = Array.from({ length: daysCount }, (_, i) => {
         const dayNumber = i + 1;
-        let iso = '';
+        let iso = "";
         try {
           const js = new NepaliDate(bsYear, bsMonth, dayNumber).toJsDate();
           iso = toIsoString(js);
         } catch {
-          iso = '';
+          iso = "";
         }
         return { n: dayNumber, iso };
       });
 
       return {
-        headerPrimary: `${BS_MONTH_DISPLAY[bsMonth] || ''} ${bsYear}`,
+        headerPrimary: `${BS_MONTH_DISPLAY[bsMonth] || ""} ${bsYear}`,
         headerSecondary: getBsSubtitle(bsYear, bsMonth, daysCount),
         lead,
         days,
@@ -297,7 +297,7 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
       });
 
       return {
-        headerPrimary: `${AD_MONTHS[adMonth] || ''} ${adYear}`,
+        headerPrimary: `${AD_MONTHS[adMonth] || ""} ${adYear}`,
         headerSecondary: getAdSubtitle(adYear, adMonth, daysCount),
         lead,
         days,
@@ -311,15 +311,15 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
       <div className="edp-toggle">
         <button
           type="button"
-          onClick={() => handleSwitchSystem('AD')}
-          className={`edp-toggle-btn${system === 'AD' ? ' active' : ''}`}
+          onClick={() => handleSwitchSystem("AD")}
+          className={`edp-toggle-btn${system === "AD" ? " active" : ""}`}
         >
           AD (Gregorian)
         </button>
         <button
           type="button"
-          onClick={() => handleSwitchSystem('BS')}
-          className={`edp-toggle-btn${system === 'BS' ? ' active' : ''}`}
+          onClick={() => handleSwitchSystem("BS")}
+          className={`edp-toggle-btn${system === "BS" ? " active" : ""}`}
         >
           BS (Bikram Sambat)
         </button>
@@ -339,12 +339,8 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
           </button>
 
           <div className="edp-title-wrap">
-            <h3 className="edp-title">
-              {gridData.headerPrimary}
-            </h3>
-            <p className="edp-subtitle">
-              {gridData.headerSecondary}
-            </p>
+            <h3 className="edp-title">{gridData.headerPrimary}</h3>
+            <p className="edp-subtitle">{gridData.headerSecondary}</p>
           </div>
 
           <button
@@ -360,10 +356,7 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
         {/* Weekday headers */}
         <div className="edp-weekdays">
           {WEEKDAYS.map((w, i) => (
-            <span
-              key={w}
-              className={`edp-weekday${i === 0 || i === 6 ? ' weekend' : ''}`}
-            >
+            <span key={w} className={`edp-weekday${i === 0 || i === 6 ? " weekend" : ""}`}>
               {w}
             </span>
           ))}
@@ -382,10 +375,10 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
             const isPast = Boolean(minDate && day.iso && day.iso < minDate);
             const isToday = Boolean(day.iso === todayIso);
 
-            let dayClass = 'edp-day';
-            if (isSelected) dayClass += ' selected';
-            else if (isToday) dayClass += ' today';
-            if (isPast) dayClass += ' disabled';
+            let dayClass = "edp-day";
+            if (isSelected) dayClass += " selected";
+            else if (isToday) dayClass += " today";
+            if (isPast) dayClass += " disabled";
 
             return (
               <button

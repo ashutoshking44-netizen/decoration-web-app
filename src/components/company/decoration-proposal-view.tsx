@@ -1,36 +1,21 @@
 import React, { useState, useRef, useMemo, useEffect } from "react";
 import { toast } from "sonner";
-import {
-  X,
-  Share2,
-  ExternalLink,
-  MessageCircle,
-  Copy,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Check,
-} from "lucide-react";
+import { X, MessageCircle, Copy } from "lucide-react";
 import type { BookedClient, ClientCeremonyItem } from "@/lib/clients";
-import { healEmptyQuotationCeremonies, getCeremonySubtotal, getClientTotal } from "@/lib/clients";
+import { healEmptyQuotationCeremonies } from "@/lib/clients";
 import { ceremoniesFromEnquiry, loadStoredEnquiries } from "@/lib/enquiries";
 import { useCompanyProfile } from "@/lib/company-profile";
 import { usePaymentQrs } from "@/lib/payment-qr";
 import { compressImage } from "@/lib/photographer-gallery";
 import { saveEnquiryPhotos } from "@/lib/enquiry-photos";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import {
-  useProposalActivity,
-  saveStoredProposalActivity,
-  getStoredProposalActivity,
-} from "@/lib/proposal-activity";
+import { useProposalActivity } from "@/lib/proposal-activity";
 import {
   getDecorItemBreakdown,
   generateDecorSummary,
   findCatalogSetup,
   formatNepaliNumber,
   toTitleCase,
-  type DecorItemBreakdown,
 } from "@/lib/decor-item-breakdown";
 
 export interface DayItem {

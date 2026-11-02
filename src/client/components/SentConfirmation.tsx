@@ -1,14 +1,11 @@
-import React from 'react';
+import React from "react";
 
 export interface SentConfirmationProps {
   companies?: (string | { id?: string | number; name: string; logo?: string })[];
   onDone?: () => void;
 }
 
-export const MOCK_CONFIRMATION_COMPANIES = [
-  'Everest Events & Decor',
-  'Luminous Decor',
-];
+export const MOCK_CONFIRMATION_COMPANIES = ["Everest Events & Decor", "Luminous Decor"];
 
 /**
  * Format company names into natural language:
@@ -17,14 +14,12 @@ export const MOCK_CONFIRMATION_COMPANIES = [
  * - 3+: "Sent to A, B, and C. Each will send you its own quotation link."
  */
 export function formatCompanyListSentence(
-  companies: (string | { id?: string | number; name: string; logo?: string })[]
+  companies: (string | { id?: string | number; name: string; logo?: string })[],
 ): string {
-  const names = companies
-    .map((c) => (typeof c === 'string' ? c : c.name))
-    .filter(Boolean);
+  const names = companies.map((c) => (typeof c === "string" ? c : c.name)).filter(Boolean);
 
   if (names.length === 0) {
-    return 'Sent to selected companies. Each will send you its own quotation link.';
+    return "Sent to selected companies. Each will send you its own quotation link.";
   }
   if (names.length === 1) {
     return `Sent to ${names[0]}. They will send you their quotation link shortly.`;
@@ -33,7 +28,7 @@ export function formatCompanyListSentence(
     return `Sent to ${names[0]} and ${names[1]}. Each will send you its own quotation link.`;
   }
   const last = names[names.length - 1];
-  const rest = names.slice(0, -1).join(', ');
+  const rest = names.slice(0, -1).join(", ");
   return `Sent to ${rest}, and ${last}. Each will send you its own quotation link.`;
 }
 
@@ -73,11 +68,7 @@ export const SentConfirmation: React.FC<SentConfirmationProps> = ({
 
       {/* Action Button */}
       <div className="sent-conf-action-wrap">
-        <button
-          type="button"
-          className="sent-conf-btn"
-          onClick={onDone}
-        >
+        <button type="button" className="sent-conf-btn" onClick={onDone}>
           Back to decorations
         </button>
       </div>
@@ -86,4 +77,3 @@ export const SentConfirmation: React.FC<SentConfirmationProps> = ({
 };
 
 export default SentConfirmation;
-

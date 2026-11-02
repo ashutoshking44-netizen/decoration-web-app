@@ -1,12 +1,10 @@
-import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRight,
   CalendarDays,
-  Camera,
   Check,
   CheckCircle2,
-  ImagePlus,
   Link as LinkIcon,
   Loader2,
   Mail,

@@ -43,7 +43,7 @@ export type UpcomingFunction = {
 };
 
 export type DashboardData = {
-  company: { name: string; caption: string; initials: string; profileComplete: boolean };
+  company: { name: string; initials: string; profileComplete: boolean };
   permissions: Permission[];
   enquiries: { today: number; yesterday: number; month: number };
   bookings: { count: number; averageMinutes: number };
@@ -153,7 +153,6 @@ export function buildLiveDashboardData(): DashboardData {
   return {
     company: {
       name,
-      caption: "Business Suite",
       initials,
       profileComplete: Boolean(profile?.phone && profile?.email && profile?.city),
     },

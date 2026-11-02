@@ -1,5 +1,9 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { AddDecorationPage, useDecorationSetupsStore, loadStoredSetups } from "@/features/inventory";
+import {
+  AddDecorationPage,
+  useDecorationSetupsStore,
+  loadStoredSetups,
+} from "@/features/inventory";
 import { getActiveCompanyId } from "@/features/company";
 import { useMemo } from "react";
 

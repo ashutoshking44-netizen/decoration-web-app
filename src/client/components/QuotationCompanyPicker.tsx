@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 export interface CompanyPickerGroup {
   id: string;
@@ -31,18 +31,13 @@ export const QuotationCompanyPicker: React.FC<QuotationCompanyPickerProps> = ({
             <>You have chosen decorations from {singleCompanyName}</>
           ) : (
             <>
-              You have chosen decorations from{' '}
-              <b className="quote-company-count-highlight">
-                {groups.length}
-              </b>{' '}
-              companies
+              You have chosen decorations from{" "}
+              <b className="quote-company-count-highlight">{groups.length}</b> companies
             </>
           )}
         </h4>
         <p className="quote-company-picker-subtext">
-          {isSingle
-            ? 'Your request will be sent to this company.'
-            : 'Send quotation request to:'}
+          {isSingle ? "Your request will be sent to this company." : "Send quotation request to:"}
         </p>
       </div>
 
@@ -55,10 +50,7 @@ export const QuotationCompanyPicker: React.FC<QuotationCompanyPickerProps> = ({
         {groups.map((group) => {
           const isSelected = selected.includes(group.id);
           return (
-            <div
-              key={group.id}
-              className={`quote-company-row ${isSelected ? 'selected' : ''}`}
-            >
+            <div key={group.id} className={`quote-company-row ${isSelected ? "selected" : ""}`}>
               {/* Hidden native checkbox covering the entire row */}
               <input
                 type="checkbox"
@@ -72,7 +64,7 @@ export const QuotationCompanyPicker: React.FC<QuotationCompanyPickerProps> = ({
               {/* Left: Custom Checkbox + Company Name */}
               <div className="quote-company-row-left">
                 <div
-                  className={`quote-company-custom-check ${isSelected ? 'checked' : ''}`}
+                  className={`quote-company-custom-check ${isSelected ? "checked" : ""}`}
                   aria-hidden="true"
                 >
                   {isSelected && (
@@ -95,7 +87,7 @@ export const QuotationCompanyPicker: React.FC<QuotationCompanyPickerProps> = ({
 
               {/* Right: Item Count */}
               <span className="quote-company-count-badge">
-                {group.count} {group.count === 1 ? 'decoration' : 'decorations'}
+                {group.count} {group.count === 1 ? "decoration" : "decorations"}
               </span>
             </div>
           );
@@ -128,4 +120,3 @@ export const QuotationCompanyPicker: React.FC<QuotationCompanyPickerProps> = ({
 };
 
 export default QuotationCompanyPicker;
-

@@ -1,4 +1,3 @@
-import React from "react";
 import type { IllustrationVariant } from "./error-definitions";
 
 interface ErrorIllustrationProps {

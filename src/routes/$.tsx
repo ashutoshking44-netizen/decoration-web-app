@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import React from "react";
 import { ErrorPage } from "@/features/errors";
 
 export const Route = createFileRoute("/$")({
@@ -9,7 +8,8 @@ export const Route = createFileRoute("/$")({
       { title: "404 - Page Not Found | Everest Events & Decor" },
       {
         name: "description",
-        content: "The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.",
+        content:
+          "The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.",
       },
     ],
   }),

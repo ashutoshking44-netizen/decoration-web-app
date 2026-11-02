@@ -1,7 +1,7 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import type { DecorationItem } from '../ClientHomePage';
-import type { StoredQuotation } from '../lib/quotationStorage';
-import { QuotationCompanyPicker, type CompanyPickerGroup } from './QuotationCompanyPicker';
+import React, { useRef, useEffect, useState, useMemo } from "react";
+import type { DecorationItem } from "../ClientHomePage";
+import type { StoredQuotation } from "../lib/quotationStorage";
+import { QuotationCompanyPicker, type CompanyPickerGroup } from "./QuotationCompanyPicker";
 
 export interface ReviewQuotationModalProps {
   isOpen: boolean;
@@ -14,17 +14,17 @@ export interface ReviewQuotationModalProps {
 }
 
 const formatDate = (dateStr: string) => {
-  if (!dateStr) return '';
+  if (!dateStr) return "";
   try {
-    const [y, m, d] = dateStr.split('-');
+    const [y, m, d] = dateStr.split("-");
     const date = new Date(+(y || 0), +(m || 1) - 1, +(d || 1));
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   } catch {
     return dateStr;
   }
 };
 
-const fmt = (n: number) => 'Rs. ' + n.toLocaleString('en-IN');
+const fmt = (n: number) => "Rs. " + n.toLocaleString("en-IN");
 
 export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
   isOpen,
@@ -91,7 +91,7 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
 
   const totalItemCount = Object.values(eventQuotes).reduce(
     (acc, list) => acc + (list ? list.length : 0),
-    0
+    0,
   );
 
   const grandTotal = plannedEvents.reduce((acc, ev) => {
@@ -110,7 +110,7 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
     for (const id of allItemIds) {
       const itm = catalog.find((i) => i.id === id);
       if (!itm) continue;
-      const coName = itm.ownerCompanyName || itm.vendor || 'Everest Events & Decor';
+      const coName = itm.ownerCompanyName || itm.vendor || "Everest Events & Decor";
       if (!map[coName]) {
         map[coName] = { id: coName, name: coName, count: 0 };
       }
@@ -127,7 +127,7 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
     setSelectedCompanies((prev) => {
       const retained = prev.filter((id) => currentIds.includes(id));
       const newToSelect = currentIds.filter(
-        (id) => !prev.includes(id) && !userUncheckedCompaniesRef.current.has(id)
+        (id) => !prev.includes(id) && !userUncheckedCompaniesRef.current.has(id),
       );
       return [...retained, ...newToSelect];
     });
@@ -160,9 +160,9 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
       <div className="review-dialog-header">
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
             gap: 12,
           }}
         >
@@ -172,8 +172,8 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
             </h2>
             <div
               style={{
-                color: 'var(--mute)',
-                fontSize: '12px',
+                color: "var(--mute)",
+                fontSize: "12px",
                 marginTop: 4,
               }}
             >
@@ -186,18 +186,18 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
             onClick={onClose}
             aria-label="Close quotation"
             style={{
-              position: 'static',
+              position: "static",
               flexShrink: 0,
               width: 32,
               height: 32,
-              borderRadius: '50%',
+              borderRadius: "50%",
               border: 0,
-              background: '#f5eff2',
-              color: 'var(--mute)',
-              cursor: 'pointer',
-              display: 'grid',
-              placeItems: 'center',
-              fontSize: '14px',
+              background: "#f5eff2",
+              color: "var(--mute)",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              fontSize: "14px",
               lineHeight: 1,
             }}
           >
@@ -210,9 +210,9 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
         {plannedEvents.length === 0 || totalItemCount === 0 ? (
           <div
             style={{
-              padding: '36px 12px',
-              textAlign: 'center',
-              color: 'var(--mute)',
+              padding: "36px 12px",
+              textAlign: "center",
+              color: "var(--mute)",
             }}
           >
             No decorations added to quotation yet.
@@ -230,13 +230,11 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
                 <div key={ev.name} className="review-event-group">
                   <div className="review-event-header">
                     <div>
-                      <strong style={{ fontSize: '14px', color: 'var(--ink)' }}>
-                        {ev.name}
-                      </strong>
+                      <strong style={{ fontSize: "14px", color: "var(--ink)" }}>{ev.name}</strong>
                       <span
                         style={{
-                          fontSize: '12px',
-                          color: 'var(--mute)',
+                          fontSize: "12px",
+                          color: "var(--mute)",
                           marginLeft: 8,
                         }}
                       >
@@ -245,44 +243,44 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
                     </div>
                     <span
                       style={{
-                        fontSize: '11px',
-                        background: 'var(--card)',
-                        padding: '2px 8px',
+                        fontSize: "11px",
+                        background: "var(--card)",
+                        padding: "2px 8px",
                         borderRadius: 12,
-                        border: '1px solid var(--line)',
-                        color: 'var(--brand)',
+                        border: "1px solid var(--line)",
+                        color: "var(--brand)",
                         fontWeight: 600,
                       }}
                     >
-                      {items.length} item{items.length === 1 ? '' : 's'}
+                      {items.length} item{items.length === 1 ? "" : "s"}
                     </span>
                   </div>
 
                   {items.length === 0 ? (
                     <div
                       style={{
-                        fontSize: '12px',
-                        color: 'var(--mute)',
-                        padding: '8px 0',
+                        fontSize: "12px",
+                        color: "var(--mute)",
+                        padding: "8px 0",
                       }}
                     >
                       No decorations added for this event yet.
                     </div>
                   ) : (
-                    <ul className="list" style={{ margin: '6px 0' }}>
+                    <ul className="list" style={{ margin: "6px 0" }}>
                       {items.map((it) => (
                         <li
                           key={it.id}
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
                             gap: 12,
-                            padding: '8px 0',
-                            borderBottom: '1px solid var(--line)',
+                            padding: "8px 0",
+                            borderBottom: "1px solid var(--line)",
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <img
                               src={it.img}
                               alt={it.t}
@@ -290,28 +288,28 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
                                 width: 44,
                                 height: 44,
                                 borderRadius: 8,
-                                objectFit: 'cover',
+                                objectFit: "cover",
                               }}
                             />
                             <div>
                               <div style={{ fontWeight: 600, fontSize: 13 }}>{it.t}</div>
-                              <small style={{ color: 'var(--mute)' }}>
-                                by {it.ownerCompanyName || it.vendor || 'Everest Events & Decor'}
+                              <small style={{ color: "var(--mute)" }}>
+                                by {it.ownerCompanyName || it.vendor || "Everest Events & Decor"}
                               </small>
                             </div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                             <strong style={{ fontSize: 13 }}>{fmt(it.p)}</strong>
                             <button
                               type="button"
                               onClick={() => onRemoveItem(ev.name, it.id)}
                               style={{
-                                background: 'none',
+                                background: "none",
                                 border: 0,
-                                color: 'var(--mute)',
-                                cursor: 'pointer',
+                                color: "var(--mute)",
+                                cursor: "pointer",
                                 fontSize: 14,
-                                padding: '4px 8px',
+                                padding: "4px 8px",
                               }}
                               title="Remove item"
                             >
@@ -325,16 +323,16 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
 
                   <div
                     style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '8px 0',
-                      fontSize: '13px',
-                      color: 'var(--mute)',
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "8px 0",
+                      fontSize: "13px",
+                      color: "var(--mute)",
                     }}
                   >
                     <span>{ev.name} subtotal:</span>
-                    <strong style={{ color: 'var(--ink)' }}>{fmt(subtotal)}</strong>
+                    <strong style={{ color: "var(--ink)" }}>{fmt(subtotal)}</strong>
                   </div>
                 </div>
               );
@@ -349,15 +347,18 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
 
             <div
               style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '16px 0 6px',
-                fontSize: '16px',
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "16px 0 6px",
+                fontSize: "16px",
               }}
             >
-              <span style={{ fontWeight: 500, color: 'var(--ink)' }}>Estimated Grand Total</span>
-              <b className="price" style={{ color: 'var(--brand)', fontSize: '20px', fontWeight: 700 }}>
+              <span style={{ fontWeight: 500, color: "var(--ink)" }}>Estimated Grand Total</span>
+              <b
+                className="price"
+                style={{ color: "var(--brand)", fontSize: "20px", fontWeight: 700 }}
+              >
                 {fmt(grandTotal)}
               </b>
             </div>
@@ -374,11 +375,7 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
         >
           Clear all
         </button>
-        <button
-          type="button"
-          className="pill review-close-btn"
-          onClick={onClose}
-        >
+        <button type="button" className="pill review-close-btn" onClick={onClose}>
           Close
         </button>
         <button
@@ -393,4 +390,3 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
     </dialog>
   );
 };
-

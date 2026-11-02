@@ -1,8 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import React, { useState, useEffect, useMemo } from "react";
-import {
-  fetchLiveDecorations,
-} from "@/client/api";
+import { useState, useEffect, useMemo } from "react";
+import { fetchLiveDecorations, type ApiDecoration } from "@/client/api";
+import { CacheKeys, peekCache } from "@/lib/cache";
 import {
   fromApi,
   getSpecs,
@@ -22,7 +21,10 @@ import {
 } from "@/client/lib/quotationStorage";
 import { PlanEventModal } from "@/client/components/PlanEventModal";
 import { ReviewQuotationModal } from "@/client/components/ReviewQuotationModal";
-import { ContactInquiryModal, type BuyNowDecorationItem } from "@/client/components/ContactInquiryModal";
+import {
+  ContactInquiryModal,
+  type BuyNowDecorationItem,
+} from "@/client/components/ContactInquiryModal";
 import "@/client/client.css";
 
 export const Route = createFileRoute("/decor/$decorId")({
@@ -32,7 +34,8 @@ export const Route = createFileRoute("/decor/$decorId")({
       { title: "Decoration Details - Everest Events & Decor" },
       {
         name: "description",
-        content: "Explore luxury wedding and event decorations, structure details, dimensions, and instant quotation estimates.",
+        content:
+          "Explore luxury wedding and event decorations, structure details, dimensions, and instant quotation estimates.",
       },
     ],
   }),
@@ -43,8 +46,12 @@ function DecorationDetailRouteComponent() {
   const { decorId } = Route.useParams();
   const navigate = useNavigate();
 
-  const [catalog, setCatalog] = useState<DecorationItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Reuse the catalog already cached by the home page (instant render, no request)
+  const [catalog, setCatalog] = useState<DecorationItem[]>(() => {
+    const cached = peekCache<ApiDecoration[]>(CacheKeys.liveDecorations());
+    return cached ? cached.map(fromApi) : [];
+  });
+  const [loading, setLoading] = useState(() => !peekCache(CacheKeys.liveDecorations()));
   const [selectedPhotoIdx, setSelectedPhotoIdx] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
   const [quotationToast, setQuotationToast] = useState("");
@@ -65,13 +72,14 @@ function DecorationDetailRouteComponent() {
     });
   }, []);
 
-
   useEffect(() => {
     let cancelled = false;
+    const seeded = peekCache<ApiDecoration[]>(CacheKeys.liveDecorations());
     fetchLiveDecorations()
       .then((list) => {
         if (!cancelled) {
-          setCatalog(list.map(fromApi));
+          // Unchanged cached list → already rendered from the seed, skip re-render
+          if (list !== seeded) setCatalog(list.map(fromApi));
           setLoading(false);
         }
       })
@@ -185,9 +193,7 @@ function DecorationDetailRouteComponent() {
     const existingList = currentQuotes[firstEvent] || [];
     const nextQuotes = {
       ...currentQuotes,
-      [firstEvent]: existingList.includes(item.id)
-        ? existingList
-        : [...existingList, item.id],
+      [firstEvent]: existingList.includes(item.id) ? existingList : [...existingList, item.id],
     };
 
     const updated = saveStoredQuotation({
@@ -215,8 +221,6 @@ function DecorationDetailRouteComponent() {
     setReviewModalOpen(false);
   };
 
-
-
   // Loading skeleton state
   if (loading) {
     return (
@@ -230,10 +234,42 @@ function DecorationDetailRouteComponent() {
             }}
           />
           <div className="detail-body" style={{ padding: "56px 48px" }}>
-            <div style={{ width: 120, height: 24, borderRadius: 999, background: "#f0e9ea", marginBottom: 16 }} />
-            <div style={{ width: "70%", height: 48, borderRadius: 8, background: "#f0e9ea", marginBottom: 20 }} />
-            <div style={{ width: "40%", height: 32, borderRadius: 8, background: "#f0e9ea", marginBottom: 30 }} />
-            <div style={{ width: "100%", height: 120, borderRadius: 12, background: "#f0e9ea", marginBottom: 20 }} />
+            <div
+              style={{
+                width: 120,
+                height: 24,
+                borderRadius: 999,
+                background: "#f0e9ea",
+                marginBottom: 16,
+              }}
+            />
+            <div
+              style={{
+                width: "70%",
+                height: 48,
+                borderRadius: 8,
+                background: "#f0e9ea",
+                marginBottom: 20,
+              }}
+            />
+            <div
+              style={{
+                width: "40%",
+                height: 32,
+                borderRadius: 8,
+                background: "#f0e9ea",
+                marginBottom: 30,
+              }}
+            />
+            <div
+              style={{
+                width: "100%",
+                height: 120,
+                borderRadius: 12,
+                background: "#f0e9ea",
+                marginBottom: 20,
+              }}
+            />
             <div style={{ width: "100%", height: 160, borderRadius: 12, background: "#f0e9ea" }} />
           </div>
         </div>
@@ -244,8 +280,19 @@ function DecorationDetailRouteComponent() {
   // Not found state
   if (!item) {
     return (
-      <div className="client-portal-root" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div
+        className="client-portal-root"
+        style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}
+      >
+        <div
+          style={{
+            padding: "20px 24px",
+            borderBottom: "1px solid var(--line)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <Link to="/" className="pill">
             ← Back to decorations
           </Link>
@@ -254,16 +301,33 @@ function DecorationDetailRouteComponent() {
           </span>
         </div>
 
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+            textAlign: "center",
+          }}
+        >
           <div style={{ maxWidth: 460 }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>🌸</div>
-            <h1 className="serif" style={{ fontSize: 36, margin: "0 0 12px", color: "var(--ink)", fontWeight: 500 }}>
+            <h1
+              className="serif"
+              style={{ fontSize: 36, margin: "0 0 12px", color: "var(--ink)", fontWeight: 500 }}
+            >
               Decoration Not Found
             </h1>
             <p style={{ fontSize: 13.5, color: "var(--mute)", lineHeight: 1.6, marginBottom: 24 }}>
-              We could not find the decoration setup with the link &quot;{decorId}&quot;. It may have been renamed or moved in the catalog.
+              We could not find the decoration setup with the link &quot;{decorId}&quot;. It may
+              have been renamed or moved in the catalog.
             </p>
-            <Link to="/" className="pill pri" style={{ textDecoration: "none", display: "inline-block" }}>
+            <Link
+              to="/"
+              className="pill pri"
+              style={{ textDecoration: "none", display: "inline-block" }}
+            >
               Browse All Decorations
             </Link>
           </div>
@@ -344,11 +408,7 @@ function DecorationDetailRouteComponent() {
               </svg>
             )}
           </button>
-          <a
-            href="tel:9828223787"
-            className="header-call-btn"
-            title="Call Decorator"
-          >
+          <a href="tel:9828223787" className="header-call-btn" title="Call Decorator">
             <svg
               width="14"
               height="14"
@@ -389,9 +449,7 @@ function DecorationDetailRouteComponent() {
                 type="button"
                 className="ph-nav prev big"
                 aria-label="Previous photo"
-                onClick={() =>
-                  setSelectedPhotoIdx((i) => (i - 1 + images.length) % images.length)
-                }
+                onClick={() => setSelectedPhotoIdx((i) => (i - 1 + images.length) % images.length)}
               >
                 ‹
               </button>
@@ -399,9 +457,7 @@ function DecorationDetailRouteComponent() {
                 type="button"
                 className="ph-nav next big"
                 aria-label="Next photo"
-                onClick={() =>
-                  setSelectedPhotoIdx((i) => (i + 1) % images.length)
-                }
+                onClick={() => setSelectedPhotoIdx((i) => (i + 1) % images.length)}
               >
                 ›
               </button>
@@ -529,9 +585,7 @@ function DecorationDetailRouteComponent() {
               )}
 
               {/* Included add-ons */}
-              {(specs.platform ||
-                specs.lighting ||
-                (specs.addons?.length ?? 0) > 0) && (
+              {(specs.platform || specs.lighting || (specs.addons?.length ?? 0) > 0) && (
                 <section className="spec-sec">
                   <h4>Included add-ons</h4>
                   {specs.platform && typeof specs.platform === "object" && (
@@ -557,9 +611,7 @@ function DecorationDetailRouteComponent() {
                           {a.sub && <small>{a.sub}</small>}
                         </div>
                         <strong>
-                          {a.price > 0
-                            ? `Rs. ${a.price.toLocaleString("en-IN")}`
-                            : "Included"}
+                          {a.price > 0 ? `Rs. ${a.price.toLocaleString("en-IN")}` : "Included"}
                         </strong>
                       </div>
                     ))}

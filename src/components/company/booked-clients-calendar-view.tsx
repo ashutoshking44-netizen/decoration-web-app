@@ -4,25 +4,12 @@ import {
   ChevronRight,
   Sparkles,
   MapPin,
-  Clock,
   Phone,
   MessageCircle,
   CalendarCheck,
-  AlertCircle,
-  Users,
-  CheckCircle2,
-  Calendar as CalendarIcon,
   ExternalLink,
 } from "lucide-react";
-import {
-  type BookedClient,
-  type BookingStage,
-  BOOKING_STAGES,
-  parseEventDate,
-  computeDecorationItemPrice,
-  getClientTotal,
-  formatCurrency,
-} from "@/lib/clients";
+import { type BookedClient, parseEventDate, getClientTotal, formatCurrency } from "@/lib/clients";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 

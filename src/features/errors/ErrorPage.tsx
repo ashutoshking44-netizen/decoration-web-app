@@ -1,10 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import {
-  resolveErrorConfig,
-  type HttpErrorCode,
-  type ErrorConfig,
-} from "./error-definitions";
+import { resolveErrorConfig, type HttpErrorCode, type ErrorConfig } from "./error-definitions";
 import { ErrorIllustration } from "./ErrorIllustration";
 import { SupportModal } from "./SupportModal";
 
@@ -28,9 +24,7 @@ export function ErrorPage({
   const [supportModalOpen, setSupportModalOpen] = useState(false);
 
   // Resolve error configuration
-  const config: ErrorConfig = resolveErrorConfig(
-    code || (error as Error | null | undefined),
-  );
+  const config: ErrorConfig = resolveErrorConfig(code || (error as Error | null | undefined));
 
   const displayTitle = customTitle || config.title;
   const displayDescription = customDescription || config.description;
@@ -225,8 +219,7 @@ export function ErrorPage({
                 style={{
                   position: "relative",
                   zIndex: 1,
-                  fontFamily:
-                    "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif",
+                  fontFamily: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif",
                   fontSize: "clamp(112px, 14vw, 172px)",
                   fontWeight: 800,
                   lineHeight: 0.9,
@@ -287,8 +280,7 @@ export function ErrorPage({
             {/* Error Title */}
             <h1
               style={{
-                fontFamily:
-                  "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif",
+                fontFamily: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif",
                 fontSize: "clamp(34px, 4.5vw, 50px)",
                 fontWeight: 700,
                 color: "#1d1a1c",
@@ -303,8 +295,7 @@ export function ErrorPage({
             {/* User Friendly Description */}
             <p
               style={{
-                fontFamily:
-                  "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif",
+                fontFamily: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif",
                 fontSize: "clamp(15px, 1.7vw, 17px)",
                 lineHeight: 1.65,
                 color: "#6b6b6b",

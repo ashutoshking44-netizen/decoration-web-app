@@ -4,7 +4,11 @@
   max-width: 360px;
   margin: 0 auto;
   user-select: none;
-  font-family: Poppins, system-ui, -apple-system, sans-serif;
+  font-family:
+    Poppins,
+    system-ui,
+    -apple-system,
+    sans-serif;
   box-sizing: border-box;
 }
 
@@ -244,4 +248,3 @@
   margin-left: 5px;
   font-weight: 700;
 }
-

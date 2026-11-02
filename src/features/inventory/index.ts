@@ -1,14 +1,14 @@
-export { InventorySetupPage } from '@/components/company/inventory-setup-page';
-export { AddDecorationPage } from '@/components/company/add-decoration-page';
-export { AddDecorationSetupWizard } from '@/components/company/add-decoration-setup-wizard';
-export { DecorationCatalogCard } from '@/components/company/decoration-catalog-card';
-export { DecorationCatalogListItem } from '@/components/company/decoration-catalog-list-item';
-export { DecorationDetailsModal } from '@/components/company/decoration-details-modal';
-export { FlowerColourInput } from '@/components/company/flower-colour-input';
+export { InventorySetupPage } from "@/components/company/inventory-setup-page";
+export { AddDecorationPage } from "@/components/company/add-decoration-page";
+export { AddDecorationSetupWizard } from "@/components/company/add-decoration-setup-wizard";
+export { DecorationCatalogCard } from "@/components/company/decoration-catalog-card";
+export { DecorationCatalogListItem } from "@/components/company/decoration-catalog-list-item";
+export { DecorationDetailsModal } from "@/components/company/decoration-details-modal";
+export { FlowerColourInput } from "@/components/company/flower-colour-input";
 
-export * from '@/lib/decoration-setups';
-export * from '@/lib/decor-item-breakdown';
-export * from '@/lib/design-match';
+export * from "@/lib/decoration-setups";
+export * from "@/lib/decor-item-breakdown";
+export * from "@/lib/design-match";
 
 export {
   loadStoredSetups as loadStoredInventoryTasks,
@@ -42,4 +42,4 @@ export {
   type SetupStatus,
   type SetupChecklistItem,
   type FunctionSetupTask,
-} from '@/lib/inventory-setup';
+} from "@/lib/inventory-setup";

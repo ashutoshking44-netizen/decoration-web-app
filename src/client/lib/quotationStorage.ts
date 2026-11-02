@@ -11,27 +11,27 @@ export interface StoredQuotation {
 }
 
 export const EVENT_TYPES = [
-  'Wedding',
-  'Engagement',
-  'Mehendi',
-  'Haldi',
-  'Sangeet',
-  'Reception',
-  'Bratabandha / Pasni',
-  'Birthday',
-  'Corporate event',
-  'Other',
+  "Wedding",
+  "Engagement",
+  "Mehendi",
+  "Haldi",
+  "Sangeet",
+  "Reception",
+  "Bratabandha / Pasni",
+  "Birthday",
+  "Corporate event",
+  "Other",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
 
-const STORAGE_KEY_EVENTS = 'everest_planned_events';
-const STORAGE_KEY_ACTIVE = 'everest_active_event';
-const STORAGE_KEY_QUOTES = 'everest_event_quotes';
-const SYNC_EVENT_NAME = 'everest_quotation_sync';
+const STORAGE_KEY_EVENTS = "everest_planned_events";
+const STORAGE_KEY_ACTIVE = "everest_active_event";
+const STORAGE_KEY_QUOTES = "everest_event_quotes";
+const SYNC_EVENT_NAME = "everest_quotation_sync";
 
 export function getStoredQuotation(): StoredQuotation {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return { plannedEvents: [], activeEventName: null, eventQuotes: {} };
   }
   try {
@@ -47,23 +47,25 @@ export function getStoredQuotation(): StoredQuotation {
 
     return {
       plannedEvents: validEvents,
-      activeEventName: typeof activeEventName === 'string' ? activeEventName : null,
-      eventQuotes: typeof eventQuotes === 'object' && eventQuotes !== null ? eventQuotes : {},
+      activeEventName: typeof activeEventName === "string" ? activeEventName : null,
+      eventQuotes: typeof eventQuotes === "object" && eventQuotes !== null ? eventQuotes : {},
     };
   } catch (err) {
-    console.warn('[QuotationStorage] Error reading quotation from localStorage:', err);
+    console.warn("[QuotationStorage] Error reading quotation from localStorage:", err);
     return { plannedEvents: [], activeEventName: null, eventQuotes: {} };
   }
 }
 
 export function saveStoredQuotation(state: Partial<StoredQuotation>): StoredQuotation {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return { plannedEvents: [], activeEventName: null, eventQuotes: {} };
   }
   try {
     const current = getStoredQuotation();
-    const nextEvents = state.plannedEvents !== undefined ? state.plannedEvents : current.plannedEvents;
-    let nextActive = state.activeEventName !== undefined ? state.activeEventName : current.activeEventName;
+    const nextEvents =
+      state.plannedEvents !== undefined ? state.plannedEvents : current.plannedEvents;
+    let nextActive =
+      state.activeEventName !== undefined ? state.activeEventName : current.activeEventName;
 
     // Validate that active event exists if events are present
     if (nextEvents.length > 0) {
@@ -93,33 +95,33 @@ export function saveStoredQuotation(state: Partial<StoredQuotation>): StoredQuot
     window.dispatchEvent(new CustomEvent(SYNC_EVENT_NAME, { detail: updated }));
     return updated;
   } catch (err) {
-    console.error('[QuotationStorage] Error saving quotation to localStorage:', err);
+    console.error("[QuotationStorage] Error saving quotation to localStorage:", err);
     return getStoredQuotation();
   }
 }
 
 export function clearStoredQuotation(): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(STORAGE_KEY_EVENTS);
     localStorage.removeItem(STORAGE_KEY_ACTIVE);
     localStorage.removeItem(STORAGE_KEY_QUOTES);
     window.dispatchEvent(new CustomEvent(SYNC_EVENT_NAME));
   } catch (err) {
-    console.error('[QuotationStorage] Error clearing quotation in localStorage:', err);
+    console.error("[QuotationStorage] Error clearing quotation in localStorage:", err);
   }
 }
 
 export function subscribeQuotation(callback: (quotation: StoredQuotation) => void): () => void {
-  if (typeof window === 'undefined') return () => {};
+  if (typeof window === "undefined") return () => {};
   const handler = () => {
     callback(getStoredQuotation());
   };
   window.addEventListener(SYNC_EVENT_NAME, handler);
-  window.addEventListener('storage', handler);
+  window.addEventListener("storage", handler);
   return () => {
     window.removeEventListener(SYNC_EVENT_NAME, handler);
-    window.removeEventListener('storage', handler);
+    window.removeEventListener("storage", handler);
   };
 }
 
@@ -164,4 +166,3 @@ export function getTotalQuotationCount(): number {
   });
   return allIds.size;
 }
-

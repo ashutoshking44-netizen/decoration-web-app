@@ -3,7 +3,6 @@ import { useState, useMemo, useEffect, ComponentType } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  Building2,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -22,7 +21,6 @@ import {
   Search,
   Send,
   Share2,
-  ShieldAlert,
   Sparkles,
   UserCheck,
   X,

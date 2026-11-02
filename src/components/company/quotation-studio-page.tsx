@@ -2,15 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { usePaymentQrs } from "@/lib/payment-qr";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  Printer,
-  MessageCircle,
-  Mail,
-  Copy,
   Plus,
   Trash2,
-  Calendar,
-  MapPin,
-  Sparkles,
   Flower2,
   Lightbulb,
   Layers,
@@ -22,19 +15,15 @@ import {
   ChevronDown,
   ChevronsUpDown,
   SlidersHorizontal,
-  Info,
   CheckCircle2,
   X,
-  Share2,
   Loader2,
-  Check,
   ImagePlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useCompanyProfile } from "@/lib/company-profile";
-import { EVENT_TYPE_OPTIONS } from "@/lib/company-profile";
 import {
   type DecorationCategory,
   type DecorationSetupItem,
@@ -79,7 +68,6 @@ import {
   saveStoredEventSchedule,
   convertAdToBs,
 } from "@/lib/event-schedule";
-import { DecorationCatalogCard } from "./decoration-catalog-card";
 import { MultiCeremonyCardSelector, getCeremonyCardsList } from "./multi-ceremony-card-selector";
 import { EventDesignMatchStep } from "./event-design-match-step";
 import {
