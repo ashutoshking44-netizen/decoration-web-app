@@ -1,11 +1,6 @@
 import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import {
-  type BookedClient,
-  type ClientCeremonyItem,
-  upsertStoredBookedClient,
-  ceremoniesFromEnquiry,
-} from "./clients";
+import { type BookedClient, upsertStoredBookedClient, ceremoniesFromEnquiry } from "./clients";
 import { upsertEnquiryInSupabase } from "./supabase-service";
 import {
   getEnquiryLoadState,

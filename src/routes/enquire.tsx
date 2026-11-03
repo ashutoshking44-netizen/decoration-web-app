@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ClientEnquiryForm } from "@/components/company/client-enquiry-form";
+import { ClientEnquiryForm } from "@/features/enquiries";
 
 export type EnquireSearch = {
   s?: string | undefined; // studio name
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/enquire")({
   }),
   head: () => ({
     meta: [
-      { title: "Decoration Enquiry — Request a Quotation" },
+      { title: "Decoration Enquiry - Request a Quotation" },
       {
         name: "description",
         content: "Tell us about your event and receive a personalised decoration quotation.",

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
-  ArrowLeft,
   ArrowRight,
   Bell,
   Boxes,
@@ -11,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
-  ClipboardList,
   CornerDownLeft,
   ExternalLink,
   FileText,
@@ -20,7 +18,6 @@ import {
   Lightbulb,
   Menu,
   MessageCircle,
-  PackageCheck,
   Phone,
   Plus,
   Search,
@@ -34,17 +31,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
-  dashboardFixture,
   useCompanyDashboard,
   type CalendarDay,
   type ClientResult,
@@ -61,7 +49,6 @@ const navGroups: {
   label: string;
   items: {
     label: string;
-    subtitle?: string;
     icon: ComponentType<{ className?: string }>;
     to?: string;
   }[];
@@ -70,29 +57,14 @@ const navGroups: {
     label: "Overview",
     items: [
       { label: "Home", icon: House, to: "/company" },
-      {
-        label: "Decorations",
-        subtitle: "Designs & Setups Catalog",
-        icon: Sparkles,
-        to: "/inventory",
-      },
-      {
-        label: "Event Management",
-        subtitle: "Monthly Operations View",
-        icon: CalendarDays,
-        to: "/booked-clients",
-      },
+      { label: "Decorations", icon: Sparkles, to: "/inventory" },
+      { label: "Event Management", icon: CalendarDays, to: "/booked-clients" },
     ],
   },
   {
     label: "Clients",
     items: [
-      {
-        label: "New Enquiries",
-        subtitle: "Triage & Availability Check",
-        icon: FileText,
-        to: "/enquiries",
-      },
+      { label: "New Enquiries", icon: FileText, to: "/enquiries" },
       { label: "All Clients", icon: Users, to: "/booked-clients" },
     ],
   },
@@ -145,7 +117,6 @@ export function CompanyDashboard() {
     };
   }, [baseData, profile]);
   const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [noticeVisible, setNoticeVisible] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -170,19 +141,8 @@ export function CompanyDashboard() {
 
   return (
     <div className="min-h-screen bg-canvas text-foreground">
-      <Sidebar
-        data={data}
-        collapsed={collapsed}
-        mobileOpen={mobileOpen}
-        onCollapse={() => setCollapsed((value) => !value)}
-        onMobileClose={() => setMobileOpen(false)}
-      />
-      <main
-        className={cn(
-          "min-h-screen transition-[margin] duration-300",
-          collapsed ? "md:ml-16" : "md:ml-60",
-        )}
-      >
+      <Sidebar data={data} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+      <main className="min-h-screen md:ml-60">
         <MobileHeader onOpen={() => setMobileOpen(true)} company={data.company.name} />
         <ActionBar
           permissions={data.permissions}
@@ -288,15 +248,11 @@ function MobileHeader({ onOpen, company }: { onOpen: () => void; company: string
 
 function Sidebar({
   data,
-  collapsed,
   mobileOpen,
-  onCollapse,
   onMobileClose,
 }: {
   data: DashboardData;
-  collapsed: boolean;
   mobileOpen: boolean;
-  onCollapse: () => void;
   onMobileClose: () => void;
 }) {
   const navigate = useNavigate();
@@ -312,43 +268,24 @@ function Sidebar({
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex border-r border-sidebar-border bg-sidebar transition-[width,transform] duration-300",
-          collapsed ? "w-16" : "w-60",
+          "fixed inset-y-0 left-0 z-50 flex w-60 border-r border-sidebar-border bg-sidebar transition-transform duration-300",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
       >
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <Button
-            variant="ghost"
-            className={cn(
-              "h-14 shrink-0 justify-start rounded-none border-b border-sidebar-border px-4 text-xs text-muted-foreground",
-              collapsed && "justify-center px-0",
-            )}
-          >
-            <ArrowLeft className="size-4" />
-            {!collapsed && <span>Back to Main App</span>}
-          </Button>
-          <div
-            className={cn(
-              "flex h-20 shrink-0 items-center gap-3 border-b border-sidebar-border px-4",
-              collapsed && "justify-center px-0",
-            )}
-          >
+          {/* Company identity: logo + full company name (wraps to 2 lines if long) */}
+          <div className="flex min-h-20 shrink-0 items-center gap-3 border-b border-sidebar-border px-4 py-3">
             <img
               src="/assets/app-logo.png"
-              alt="Company Logo"
+              alt=""
               className="size-11 shrink-0 rounded-full object-cover shadow-rose border border-border"
             />
-            {!collapsed && (
-              <div className="min-w-0">
-                <div className="truncate font-display text-xl font-semibold leading-tight">
-                  {data.company.name}
-                </div>
-                <div className="mt-0.5 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-                  {data.company.caption}
-                </div>
-              </div>
-            )}
+            <h2
+              className="min-w-0 line-clamp-2 break-words font-display text-xl font-semibold leading-tight"
+              title={data.company.name}
+            >
+              {data.company.name}
+            </h2>
           </div>
           <nav
             className="scrollbar-thin flex-1 overflow-y-auto py-4"
@@ -356,19 +293,13 @@ function Sidebar({
           >
             {navGroups.map((group) => (
               <div key={group.label} className="mb-4">
-                <p
-                  className={cn(
-                    "mb-1 px-5 text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground",
-                    collapsed && "sr-only",
-                  )}
-                >
+                <p className="mb-1 px-5 text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
                   {group.label}
                 </p>
                 {group.items.map((item) => (
                   <Button
                     key={item.label}
                     variant="ghost"
-                    title={collapsed ? item.label : undefined}
                     onClick={() => {
                       if (item.label === "Event Management") {
                         navigate({ to: "/booked-clients", search: { view: "calendar" } });
@@ -380,7 +311,6 @@ function Sidebar({
                       "relative h-auto min-h-11 w-full justify-start rounded-none px-3 py-1.5 text-left text-[13px] font-medium hover:bg-sidebar-accent cursor-pointer",
                       item.label === "Home" &&
                         "bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
-                      collapsed && "justify-center px-0",
                     )}
                   >
                     <span
@@ -392,28 +322,17 @@ function Sidebar({
                     >
                       <item.icon className="size-4" />
                     </span>
-                    {!collapsed && (
-                      <span className="min-w-0">
-                        <span className="block truncate">{item.label}</span>
-                        {item.subtitle && (
-                          <span className="block truncate text-[9px] font-normal text-muted-foreground">
-                            {item.subtitle}
-                          </span>
-                        )}
-                      </span>
-                    )}
+                    <span className="min-w-0 truncate">{item.label}</span>
                   </Button>
                 ))}
               </div>
             ))}
           </nav>
-          <div
-            className={cn("border-t border-sidebar-border p-4", collapsed && "px-1 text-center")}
-          >
+          <div className="border-t border-sidebar-border p-4">
             <Button
               variant="outline"
               size="sm"
-              className="w-full gap-2 text-xs md:hidden"
+              className="w-full gap-2 text-xs md:hidden mb-2"
               onClick={onMobileClose}
             >
               <X className="size-3.5" />
@@ -422,10 +341,7 @@ function Sidebar({
             <Button
               variant="ghost"
               size="sm"
-              className={cn(
-                "mb-2 w-full gap-2 text-xs text-destructive hover:text-destructive",
-                collapsed && "size-9 p-0",
-              )}
+              className="w-full gap-2 text-xs text-destructive hover:text-destructive"
               onClick={() => {
                 logoutCompany();
                 navigate({ to: "/companies" });
@@ -434,19 +350,7 @@ function Sidebar({
               title="Log out"
             >
               <LogOut className="size-3.5" />
-              {!collapsed && <span>Log out</span>}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className={cn("hidden w-full gap-2 text-xs md:flex", collapsed && "size-9 p-0")}
-              onClick={onCollapse}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              <ArrowLeft
-                className={cn("size-3.5 transition-transform", collapsed && "rotate-180")}
-              />
-              {!collapsed && <span>Collapse sidebar</span>}
+              <span>Log out</span>
             </Button>
           </div>
         </div>

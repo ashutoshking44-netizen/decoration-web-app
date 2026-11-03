@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { BookedClientsPage } from "@/components/company/booked-clients-page";
-import { loadProfile } from "@/lib/company-profile";
+import { BookedClientsPage } from "@/features/bookings";
+import { loadProfile } from "@/features/company";
 
 export type BookedClientsSearch = {
   view?: "table" | "list" | "calendar" | undefined;
@@ -32,13 +32,13 @@ export const Route = createFileRoute("/booked-clients")({
   },
   head: () => ({
     meta: [
-      { title: "All Clients & Fulfillment — Decoration Portal" },
+      { title: "All Clients & Fulfillment - Decoration Portal" },
       {
         name: "description",
         content:
           "Manage all clients, fulfillment timeline stages, payment balances, and event execution.",
       },
-      { property: "og:title", content: "All Clients & Fulfillment — Decoration Portal" },
+      { property: "og:title", content: "All Clients & Fulfillment - Decoration Portal" },
       {
         property: "og:description",
         content: "Track all clients, event fulfillment stages, and payments.",

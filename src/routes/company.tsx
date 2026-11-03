@@ -1,6 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { CompanyDashboard } from "@/components/company/company-dashboard";
-import { getActiveCompanyId } from "@/lib/company-profile";
+import { CompanyDashboard, getActiveCompanyId } from "@/features/company";
 
 export const Route = createFileRoute("/company")({
   ssr: false,
@@ -9,13 +8,13 @@ export const Route = createFileRoute("/company")({
   },
   head: () => ({
     meta: [
-      { title: "Company Dashboard — Decoration Portal" },
+      { title: "Company Dashboard - Decoration Portal" },
       {
         name: "description",
         content:
           "Manage decoration enquiries, bookings, inventory, team requirements and upcoming functions.",
       },
-      { property: "og:title", content: "Company Dashboard — Decoration Portal" },
+      { property: "og:title", content: "Company Dashboard - Decoration Portal" },
       {
         property: "og:description",
         content: "Decoration operations, team planning and upcoming functions in one place.",

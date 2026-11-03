@@ -14,6 +14,10 @@ import type { CompanyProfile, CompanySummary } from "./company-profile";
 import { isDataImageUrl, toStorageUrl } from "./image-storage";
 import { convertAdToBs } from "./event-schedule";
 import { containsPhotoRef, resolveEnquiryPhotoRefs } from "./enquiry-repository";
+import { CacheKeys, invalidateCache } from "./cache";
+
+/** Public catalog shows live decorations + company names: drop it after related writes. */
+const invalidateCatalogCache = () => void invalidateCache(CacheKeys.liveDecorations());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. ENQUIRIES API
@@ -685,6 +689,7 @@ export async function upsertDecorationInSupabase(original: DecorationSetupItem):
       console.error("Supabase upsert decoration failed:", error);
       return false;
     }
+    invalidateCatalogCache();
     return true;
   } catch (err) {
     console.error("Supabase upsert decoration error:", err);
@@ -699,6 +704,7 @@ export async function deleteDecorationFromSupabase(id: string): Promise<boolean>
       console.error("Supabase delete decoration failed:", error);
       return false;
     }
+    invalidateCatalogCache();
     return true;
   } catch (err) {
     console.error("Supabase delete decoration error:", err);
@@ -806,12 +812,22 @@ export async function listCompaniesFromSupabase(): Promise<CompanySummary[]> {
     .select("id,name,owner_name,city")
     .order("name");
   if (error) throw toRequestError(error, status);
-  return (data || []).map((r: any) => ({
-    id: r.id === "default" ? "company-1" : String(r.id),
-    name: r.name || "Untitled company",
-    ownerName: r.owner_name || "",
-    city: r.city || "",
-  }));
+  // The first company's profile lives in row "default" and is shown as "company-1".
+  // If a stray "company-1" row also exists, both would map to the same id and the
+  // company would be listed twice, so keep one entry per id (the "default" row wins,
+  // because that is the row the app reads and saves).
+  const byId = new Map<string, CompanySummary>();
+  for (const r of (data || []) as any[]) {
+    const id = r.id === "default" ? "company-1" : String(r.id);
+    if (byId.has(id) && r.id !== "default") continue;
+    byId.set(id, {
+      id,
+      name: r.name || "Untitled company",
+      ownerName: r.owner_name || "",
+      city: r.city || "",
+    });
+  }
+  return [...byId.values()];
 }
 
 export async function saveCompanyProfileToSupabase(
@@ -839,6 +855,10 @@ export async function saveCompanyProfileToSupabase(
       console.error("Supabase save company profile failed:", error);
       return false;
     }
+    // Profile, picker list and catalog (shows company names) are now outdated
+    void invalidateCache(CacheKeys.companyProfile(companyId || "company-1"));
+    void invalidateCache(CacheKeys.companyList());
+    invalidateCatalogCache();
     return true;
   } catch (err) {
     console.error("Supabase save company profile error:", err);

@@ -72,6 +72,7 @@
   --color-success-foreground: var(--success-foreground);
   --font-sans: "DM Sans", sans-serif;
   --font-display: "Cormorant Garamond", serif;
+  --font-serif: "Cormorant Garamond", Georgia, serif;
   --shadow-soft: 0 12px 40px color-mix(in oklab, var(--foreground) 7%, transparent);
   --shadow-rose: 0 8px 24px color-mix(in oklab, var(--rose) 24%, transparent);
 }

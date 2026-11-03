@@ -1,0 +1,250 @@
+/* Event Date Picker (Dual AD / BS Calendar) - Compact Size */
+.edp-wrap {
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+  user-select: none;
+  font-family:
+    Poppins,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  box-sizing: border-box;
+}
+
+.edp-wrap *,
+.edp-wrap *::before,
+.edp-wrap *::after {
+  box-sizing: border-box;
+}
+
+/* 1. Toggle capsule */
+.edp-toggle {
+  display: flex;
+  align-items: center;
+  background: #fdeef2;
+  border: 1px solid #f6dce2;
+  border-radius: 9999px;
+  padding: 3px;
+  margin: 0 auto 12px;
+  max-width: 320px;
+  box-shadow: 0 1px 3px rgba(239, 91, 120, 0.05);
+}
+
+.edp-toggle-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-family: Poppins, sans-serif;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #7d7378;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s ease;
+  line-height: 1.2;
+}
+
+.edp-toggle-btn:hover:not(.active) {
+  color: #1d1a1c;
+}
+
+.edp-toggle-btn.active {
+  background: #ffffff;
+  color: #ef5b78;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(239, 91, 120, 0.15);
+}
+
+/* 2. Calendar Card */
+.edp-card {
+  background: #ffffff;
+  border: 1px solid #f0e6e8;
+  border-radius: 20px;
+  padding: 16px 16px 18px;
+  box-shadow: 0 2px 16px rgba(60, 30, 40, 0.04);
+}
+
+/* 3. Header */
+.edp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.edp-nav-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid #f0e6e8;
+  background: #ffffff;
+  color: #ef5b78;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.edp-nav-btn:hover {
+  background: #fdeef2;
+  border-color: #ef5b78;
+  transform: scale(1.06);
+}
+
+.edp-nav-btn svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.2;
+}
+
+.edp-title-wrap {
+  text-align: center;
+  padding: 0 6px;
+}
+
+.edp-title {
+  font-family: "Cormorant Garamond", Georgia, serif !important;
+  font-size: 21px;
+  font-weight: 500;
+  color: #1d1a1c;
+  margin: 0;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.edp-subtitle {
+  font-family: Poppins, sans-serif;
+  font-size: 10.5px;
+  color: #9a9296;
+  font-weight: 400;
+  margin: 2px 0 0;
+  letter-spacing: 0.01em;
+}
+
+/* 4. Weekdays */
+.edp-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.edp-weekday {
+  font-family: Poppins, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: #8a8286;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.edp-weekday.weekend {
+  color: #ef5b78;
+  font-weight: 700;
+}
+
+/* 5. Date grid */
+.edp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  row-gap: 6px;
+  column-gap: 2px;
+  text-align: center;
+}
+
+.edp-blank {
+  height: 32px;
+}
+
+.edp-day {
+  height: 32px;
+  width: 32px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  font-family: Poppins, sans-serif;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #2d2629;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  outline: none;
+}
+
+.edp-day:hover:not(.disabled):not(.selected) {
+  background: #fdeef2;
+  color: #ef5b78;
+  transform: translateY(-1px);
+}
+
+.edp-day.today:not(.selected) {
+  font-weight: 700;
+  color: #1d1a1c;
+  box-shadow: inset 0 0 0 1.5px #ef5b78;
+}
+
+.edp-day.selected {
+  background: #ef5b78 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 3px 10px rgba(239, 91, 120, 0.4);
+  transform: scale(1.08);
+}
+
+.edp-day.disabled {
+  color: #d8d2d5;
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* 6. Selected date confirmation banner */
+.edp-selected-info {
+  margin-top: 12px;
+  padding: 7px 10px;
+  background: #fffafb;
+  border: 1px solid #f0e6e8;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.edp-selected-info-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #7a7277;
+  font-weight: 500;
+}
+
+.edp-selected-info-left svg {
+  color: #ef5b78;
+  width: 12px;
+  height: 12px;
+}
+
+.edp-selected-info-right {
+  font-weight: 600;
+  color: #1d1a1c;
+  text-align: right;
+}
+
+.edp-selected-info-bs {
+  color: #ef5b78;
+  margin-left: 5px;
+  font-weight: 700;
+}

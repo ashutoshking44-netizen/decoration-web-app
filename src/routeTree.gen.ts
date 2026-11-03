@@ -10,21 +10,30 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SplatRouteImport } from './routes/$'
 import { Route as AddDecorationRouteImport } from './routes/add-decoration'
 import { Route as BookedClientsRouteImport } from './routes/booked-clients'
 import { Route as CompaniesRouteImport } from './routes/companies'
 import { Route as CompanyRouteImport } from './routes/company'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as EnquireRouteImport } from './routes/enquire'
 import { Route as EnquiriesRouteImport } from './routes/enquiries'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
+import { Route as DashboardSplatRouteImport } from './routes/dashboard.$'
+import { Route as DecorDecorIdRouteImport } from './routes/decor.$decorId'
 import { Route as ProposalProposalIdRouteImport } from './routes/proposal.$proposalId'
 import { Route as QuotationsNewRouteImport } from './routes/quotations.new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SplatRoute = SplatRouteImport.update({
+  id: '/$',
+  path: '/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AddDecorationRoute = AddDecorationRouteImport.update({
@@ -45,6 +54,11 @@ const CompaniesRoute = CompaniesRouteImport.update({
 const CompanyRoute = CompanyRouteImport.update({
   id: '/company',
   path: '/company',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EnquireRoute = EnquireRouteImport.update({
@@ -72,6 +86,16 @@ const SetupRoute = SetupRouteImport.update({
   path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardSplatRoute = DashboardSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DecorDecorIdRoute = DecorDecorIdRouteImport.update({
+  id: '/decor/$decorId',
+  path: '/decor/$decorId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProposalProposalIdRoute = ProposalProposalIdRouteImport.update({
   id: '/proposal/$proposalId',
   path: '/proposal/$proposalId',
@@ -85,44 +109,56 @@ const QuotationsNewRoute = QuotationsNewRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/add-decoration': typeof AddDecorationRoute
   '/booked-clients': typeof BookedClientsRoute
   '/companies': typeof CompaniesRoute
   '/company': typeof CompanyRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/enquire': typeof EnquireRoute
   '/enquiries': typeof EnquiriesRoute
   '/inventory': typeof InventoryRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
+  '/dashboard/$': typeof DashboardSplatRoute
+  '/decor/$decorId': typeof DecorDecorIdRoute
   '/proposal/$proposalId': typeof ProposalProposalIdRoute
   '/quotations/new': typeof QuotationsNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/add-decoration': typeof AddDecorationRoute
   '/booked-clients': typeof BookedClientsRoute
   '/companies': typeof CompaniesRoute
   '/company': typeof CompanyRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/enquire': typeof EnquireRoute
   '/enquiries': typeof EnquiriesRoute
   '/inventory': typeof InventoryRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
+  '/dashboard/$': typeof DashboardSplatRoute
+  '/decor/$decorId': typeof DecorDecorIdRoute
   '/proposal/$proposalId': typeof ProposalProposalIdRoute
   '/quotations/new': typeof QuotationsNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/add-decoration': typeof AddDecorationRoute
   '/booked-clients': typeof BookedClientsRoute
   '/companies': typeof CompaniesRoute
   '/company': typeof CompanyRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/enquire': typeof EnquireRoute
   '/enquiries': typeof EnquiriesRoute
   '/inventory': typeof InventoryRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
+  '/dashboard/$': typeof DashboardSplatRoute
+  '/decor/$decorId': typeof DecorDecorIdRoute
   '/proposal/$proposalId': typeof ProposalProposalIdRoute
   '/quotations/new': typeof QuotationsNewRoute
 }
@@ -130,58 +166,73 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/$'
     | '/add-decoration'
     | '/booked-clients'
     | '/companies'
     | '/company'
+    | '/dashboard'
     | '/enquire'
     | '/enquiries'
     | '/inventory'
     | '/settings'
     | '/setup'
+    | '/dashboard/$'
+    | '/decor/$decorId'
     | '/proposal/$proposalId'
     | '/quotations/new'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/$'
     | '/add-decoration'
     | '/booked-clients'
     | '/companies'
     | '/company'
+    | '/dashboard'
     | '/enquire'
     | '/enquiries'
     | '/inventory'
     | '/settings'
     | '/setup'
+    | '/dashboard/$'
+    | '/decor/$decorId'
     | '/proposal/$proposalId'
     | '/quotations/new'
   id:
     | '__root__'
     | '/'
+    | '/$'
     | '/add-decoration'
     | '/booked-clients'
     | '/companies'
     | '/company'
+    | '/dashboard'
     | '/enquire'
     | '/enquiries'
     | '/inventory'
     | '/settings'
     | '/setup'
+    | '/dashboard/$'
+    | '/decor/$decorId'
     | '/proposal/$proposalId'
     | '/quotations/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SplatRoute: typeof SplatRoute
   AddDecorationRoute: typeof AddDecorationRoute
   BookedClientsRoute: typeof BookedClientsRoute
   CompaniesRoute: typeof CompaniesRoute
   CompanyRoute: typeof CompanyRoute
+  DashboardRoute: typeof DashboardRouteWithChildren
   EnquireRoute: typeof EnquireRoute
   EnquiriesRoute: typeof EnquiriesRoute
   InventoryRoute: typeof InventoryRoute
   SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
+  DecorDecorIdRoute: typeof DecorDecorIdRoute
   ProposalProposalIdRoute: typeof ProposalProposalIdRoute
   QuotationsNewRoute: typeof QuotationsNewRoute
 }
@@ -193,6 +244,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$': {
+      id: '/$'
+      path: '/$'
+      fullPath: '/$'
+      preLoaderRoute: typeof SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/add-decoration': {
@@ -221,6 +279,13 @@ declare module '@tanstack/react-router' {
       path: '/company'
       fullPath: '/company'
       preLoaderRoute: typeof CompanyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/enquire': {
@@ -258,6 +323,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SetupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard/$': {
+      id: '/dashboard/$'
+      path: '/$'
+      fullPath: '/dashboard/$'
+      preLoaderRoute: typeof DashboardSplatRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/decor/$decorId': {
+      id: '/decor/$decorId'
+      path: '/decor/$decorId'
+      fullPath: '/decor/$decorId'
+      preLoaderRoute: typeof DecorDecorIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/proposal/$proposalId': {
       id: '/proposal/$proposalId'
       path: '/proposal/$proposalId'
@@ -275,17 +354,32 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface DashboardRouteChildren {
+  DashboardSplatRoute: typeof DashboardSplatRoute
+}
+
+const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardSplatRoute: DashboardSplatRoute,
+}
+
+const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
+  DashboardRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SplatRoute: SplatRoute,
   AddDecorationRoute: AddDecorationRoute,
   BookedClientsRoute: BookedClientsRoute,
   CompaniesRoute: CompaniesRoute,
   CompanyRoute: CompanyRoute,
+  DashboardRoute: DashboardRouteWithChildren,
   EnquireRoute: EnquireRoute,
   EnquiriesRoute: EnquiriesRoute,
   InventoryRoute: InventoryRoute,
   SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,
+  DecorDecorIdRoute: DecorDecorIdRoute,
   ProposalProposalIdRoute: ProposalProposalIdRoute,
   QuotationsNewRoute: QuotationsNewRoute,
 }

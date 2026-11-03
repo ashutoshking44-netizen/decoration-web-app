@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { EnquiriesTriagePage } from "@/components/company/enquiries-triage-page";
-import { getActiveCompanyId } from "@/lib/company-profile";
+import { EnquiriesTriagePage } from "@/features/enquiries";
+import { getActiveCompanyId } from "@/features/company";
 
 export const Route = createFileRoute("/enquiries")({
   ssr: false,
@@ -11,13 +11,13 @@ export const Route = createFileRoute("/enquiries")({
   },
   head: () => ({
     meta: [
-      { title: "Enquiries & Quotations — Decoration Portal" },
+      { title: "Enquiries & Quotations - Decoration Portal" },
       {
         name: "description",
         content:
           "Manage incoming client enquiries, track quotation pipeline stages, and launch quotations.",
       },
-      { property: "og:title", content: "Enquiries & Quotations — Decoration Portal" },
+      { property: "og:title", content: "Enquiries & Quotations - Decoration Portal" },
       {
         property: "og:description",
         content:

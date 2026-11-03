@@ -1,11 +1,9 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Sparkles,
   Flower2,
   CheckCircle2,
-  Calendar,
-  MapPin,
   Search,
   X,
   ChevronRight,
@@ -14,17 +12,9 @@ import {
   Check,
   Eye,
   Layers,
-  ArrowRight,
-  Info,
   Plus,
   Edit2,
-  CheckCheck,
   ArrowUpDown,
-  Upload,
-  Camera,
-  Trash2,
-  Image as ImageIcon,
-  PenLine,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";

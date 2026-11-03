@@ -30,8 +30,7 @@ const POLL_MS = 10_000;
 export function getApiBase(): string {
   const fromEnv = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
   if (fromEnv) return fromEnv.replace(/\/+$/, "");
-  if (typeof window === "undefined") return "http://localhost:4000";
-  return `${window.location.protocol}//${window.location.hostname}:4000`;
+  return "";
 }
 
 /** Shape the client site reads (kept free of dashboard-only fields). */
@@ -213,6 +212,8 @@ let lastPublished = "";
 let bodyCache: { version: number; vendor: string; body: string } | null = null;
 
 async function publishDecorations() {
+  const apiBase = getApiBase();
+  if (!apiBase) return;
   const vendor = companyName();
   const version = getSetupsCacheVersion();
   if (!bodyCache || bodyCache.version !== version || bodyCache.vendor !== vendor) {
@@ -357,8 +358,10 @@ function toEnquiry(s: ServerEnquiry): EnquiryItem {
 }
 
 async function pullEnquiries() {
+  const apiBase = getApiBase();
+  if (!apiBase) return;
   try {
-    const res = await fetch(`${getApiBase()}/api/enquiries`);
+    const res = await fetch(`${apiBase}/api/enquiries`);
     if (!res.ok) return;
     const { enquiries } = (await res.json()) as { enquiries: ServerEnquiry[] };
     const existing = loadStoredEnquiries(true);
@@ -397,6 +400,7 @@ async function pullEnquiries() {
 /** Start background sync. Returns a cleanup function. */
 export function startServerSync(): () => void {
   if (typeof window === "undefined") return () => {};
+  if (!getApiBase()) return () => {};
   schedulePublish();
   void pullEnquiries();
   const onSetups = () => schedulePublish();

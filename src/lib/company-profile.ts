@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { fetchCompanyProfileFromSupabase, saveCompanyProfileToSupabase } from "./supabase-service";
+import { saveCompanyProfileToSupabase } from "./supabase-service";
+import { getCompanyProfileCached } from "./cached-company-data";
+import { clearCacheScope, companyScope } from "./cache";
 
 export type CompanySummary = { id: string; name: string; ownerName: string; city: string };
 
@@ -112,21 +114,27 @@ export function getActiveCompanyId(): string | null {
   }
 }
 
+/** Drop everything cached for the company that is being closed (never shared across accounts). */
+function clearCompanyCache(previousId: string | null, nextId?: string) {
+  const prev = previousId || "company-1";
+  if (prev !== nextId) void clearCacheScope(companyScope(prev));
+}
+
 /** Open a company. Pass its profile to show it straight away. */
 export function setActiveCompany(id: string, profile?: CompanyProfile | null) {
   if (typeof window === "undefined") return;
+  clearCompanyCache(getActiveCompanyId(), id);
   window.localStorage.setItem(ACTIVE_KEY, id);
   if (profile) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
   else window.localStorage.removeItem(STORAGE_KEY);
-  profileRemoteLoad = null;
 }
 
 /** Log out: no company is open. Saved companies and their data stay in Supabase. */
 export function logoutCompany() {
   if (typeof window === "undefined") return;
+  clearCompanyCache(getActiveCompanyId());
   window.localStorage.removeItem(ACTIVE_KEY);
   window.localStorage.removeItem(STORAGE_KEY);
-  profileRemoteLoad = null;
 }
 
 /** Saves the open company's profile. With no company open, it creates a new company and opens it. */
@@ -147,23 +155,17 @@ export function clearProfile() {
 }
 
 // One request is shared by every component using the profile (several per page).
-let profileRemoteLoad: Promise<CompanyProfile | null | undefined> | null = null;
-let profileRemoteLoadedAt = 0;
-const PROFILE_FRESH_MS = 30_000;
-
-/** Resolves the Supabase profile (null = none saved yet), or undefined if the request failed. */
+/**
+ * Resolves the Supabase profile (null = none saved yet), or undefined if the request failed.
+ * Request de-duplication, freshness and per-company isolation come from the shared cache
+ * (one request is shared by every component using the profile, several per page).
+ */
 function loadRemoteProfile(): Promise<CompanyProfile | null | undefined> {
-  if (profileRemoteLoad && Date.now() - profileRemoteLoadedAt < PROFILE_FRESH_MS)
-    return profileRemoteLoad;
-  profileRemoteLoadedAt = Date.now();
-  profileRemoteLoad = fetchCompanyProfileFromSupabase(getActiveCompanyId() || undefined).catch(
-    (err) => {
-      console.warn("[company-profile] Loading profile from Supabase failed:", err);
-      profileRemoteLoad = null;
-      return undefined;
-    },
-  );
-  return profileRemoteLoad;
+  const companyId = getActiveCompanyId() || "company-1";
+  return getCompanyProfileCached(companyId).catch((err) => {
+    console.warn("[company-profile] Loading profile from Supabase failed:", err);
+    return undefined;
+  });
 }
 
 export function useCompanyProfile() {

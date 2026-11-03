@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Sparkles,
@@ -11,8 +11,6 @@ import {
   ArrowLeft,
   X,
   Menu,
-  Lightbulb,
-  Armchair,
   PenLine,
   Trash2,
   TrendingUp,
@@ -24,7 +22,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
