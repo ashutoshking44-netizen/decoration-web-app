@@ -1,5 +1,5 @@
 import "./client.css";
-import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useId } from "react";
 import { SearchAutocomplete } from "./components/SearchAutocomplete";
 import { ProfileButton } from "./components/ProfileButton";
 import { SendRequestPreview } from "./components/SendRequestPreview";
@@ -8,6 +8,7 @@ import { SortBottomSheet } from "./components/SortBottomSheet";
 import { FeaturedCarousel } from "./components/FeaturedCarousel";
 import { QuotationCompanyPicker } from "./components/QuotationCompanyPicker";
 import { PlanEventModal } from "./components/PlanEventModal";
+import { ResponsiveModal } from "./components/ResponsiveModal";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { absoluteImage, fetchLiveDecorations, submitEnquiry, type ApiDecoration } from "./api";
 import { CacheKeys, peekCache, subscribeCacheInvalidation } from "../lib/cache";
@@ -513,8 +514,15 @@ export default function ClientHomePage() {
   // Dialog references
   const detailDialogRef = useRef<HTMLDialogElement>(null);
   const [detailItem, setDetailItem] = useState<DecorationItem | null>(null);
-  const reviewDialogRef = useRef<HTMLDialogElement>(null);
-  const contactDialogRef = useRef<HTMLDialogElement>(null);
+  // Review + contact popups: centred dialog on desktop, bottom sheet on phones
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  // Mirrors for global listeners (swipe / keyboard) that must not re-subscribe
+  const reviewOpenRef = useRef(false);
+  reviewOpenRef.current = reviewOpen;
+  const contactOpenRef = useRef(false);
+  contactOpenRef.current = contactOpen;
+  const contactFormId = useId();
   const contactFormRef = useRef<HTMLFormElement>(null);
   const decorSectionRef = useRef<HTMLElement>(null);
 
@@ -525,7 +533,7 @@ export default function ClientHomePage() {
       (window.location.search.includes("review=1") || window.location.hash === "#review")
     ) {
       setTimeout(() => {
-        reviewDialogRef.current?.showModal();
+        setReviewOpen(true);
       }, 150);
     }
   }, []);
@@ -689,10 +697,10 @@ export default function ClientHomePage() {
       // 4. Ignore when quotation modal or other overlays/drawers are open
       if (
         filterSheetOpenRef.current ||
-        Boolean(reviewDialogRef.current?.open) ||
+        reviewOpenRef.current ||
         planOpenRef.current ||
         Boolean(detailDialogRef.current?.open) ||
-        Boolean(contactDialogRef.current?.open)
+        contactOpenRef.current
       ) {
         touchStartDataRef.current = null;
         return;
@@ -825,8 +833,8 @@ export default function ClientHomePage() {
       if (
         planOpenRef.current ||
         detailDialogRef.current?.open ||
-        reviewDialogRef.current?.open ||
-        contactDialogRef.current?.open ||
+        reviewOpenRef.current ||
+        contactOpenRef.current ||
         filterSheetOpen ||
         sortSheetOpen
       ) {
@@ -1029,16 +1037,16 @@ export default function ClientHomePage() {
   };
 
   const openReviewModal = () => {
-    reviewDialogRef.current?.showModal();
+    setReviewOpen(true);
   };
 
   const closeReviewModal = () => {
-    reviewDialogRef.current?.close();
+    setReviewOpen(false);
   };
 
   const clearAllQuotes = () => {
     setEventQuotes({});
-    reviewDialogRef.current?.close();
+    setReviewOpen(false);
   };
 
   // Cancel button on the bottom bar: first tap asks, second tap clears everything
@@ -1078,7 +1086,7 @@ export default function ClientHomePage() {
     setPlanMeta({ venue: "" });
     setEventQuotes({});
     setPendingItemId(null);
-    reviewDialogRef.current?.close();
+    setReviewOpen(false);
   };
 
   // Find first event AFTER currently active event with 0 items, falling back to any empty event if none after
@@ -1123,22 +1131,30 @@ export default function ClientHomePage() {
     setBuyNowItem(item);
     resetContactForm();
     setIsSubmitted(false);
-    contactDialogRef.current?.showModal();
+    setContactOpen(true);
   };
 
   const openContactModal = () => {
-    reviewDialogRef.current?.close();
+    setReviewOpen(false);
     setBuyNowItem(null);
     resetContactForm();
     setIsSubmitted(false);
-    contactDialogRef.current?.showModal();
+    setContactOpen(true);
   };
 
   const closeContactModal = () => {
-    contactDialogRef.current?.close();
+    setContactOpen(false);
+    setBuyNowItem(null);
     resetContactForm();
     setIsSubmitted(false);
     setSubmitError("");
+  };
+
+  // Backdrop tap / Escape / pull-down: same as the old native dialog close
+  // (keeps typed details, clears the buy-now item)
+  const dismissContactModal = () => {
+    setContactOpen(false);
+    setBuyNowItem(null);
   };
 
   // Plan popup finished ("Start shopping →"): events arrive sorted, earliest first
@@ -1449,6 +1465,94 @@ export default function ClientHomePage() {
       </article>
     );
   };
+
+  // Review popup buttons (dialog footer on desktop, pinned sheet footer on phones)
+  const reviewActions = (
+    <>
+      <button
+        type="button"
+        className="pill review-clear-btn"
+        onClick={clearAllQuotes}
+        disabled={totalItemCount === 0}
+      >
+        Clear all
+      </button>
+      <button type="button" className="pill review-close-btn" onClick={closeReviewModal}>
+        Close
+      </button>
+      {nextEmptyReviewEvent ? (
+        <div
+          className="review-send-btn-wrap"
+          style={{
+            display: "inline-flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 4,
+          }}
+        >
+          <button
+            type="button"
+            className="pill pri review-primary-btn"
+            onClick={() => handleNextEmptyEventClick(nextEmptyReviewEvent.name)}
+            disabled={totalItemCount === 0}
+          >
+            Next: {nextEmptyReviewEvent.name} →
+          </button>
+          <button
+            type="button"
+            className="review-skip-link"
+            onClick={() => handleSkipAndSend(nextEmptyReviewEvent.name)}
+            style={{
+              background: "none",
+              border: 0,
+              padding: "2px 0",
+              color: "var(--mute)",
+              fontSize: "11px",
+              textDecoration: "underline",
+              cursor: "pointer",
+            }}
+          >
+            Skip {nextEmptyReviewEvent.name} and send
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="pill pri review-primary-btn"
+          onClick={openContactModal}
+          disabled={totalItemCount === 0 || selectedCompanyCount === 0}
+        >
+          {quotationSendBtnLabel}
+        </button>
+      )}
+    </>
+  );
+
+  // Contact popup buttons; submit targets the form by id so it also works from the sheet footer
+  const contactSubmitDisabled =
+    isSending ||
+    !contactName.trim() ||
+    !isValidPhone(contactPhone) ||
+    !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp);
+  const contactActions = isSubmitted ? (
+    <button type="button" className="pill pri" onClick={closeContactModal}>
+      Close
+    </button>
+  ) : (
+    <>
+      <button type="button" className="pill" onClick={closeContactModal}>
+        Cancel
+      </button>
+      <button
+        type="submit"
+        form={contactFormId}
+        className="pill pri"
+        disabled={contactSubmitDisabled}
+      >
+        {isSending ? "Sending…" : buyNowItem ? "Place order" : "Send request"}
+      </button>
+    </>
+  );
 
   return (
     <div className="client-portal-root">
@@ -2320,13 +2424,22 @@ export default function ClientHomePage() {
       />
 
       {/* 6. Review Popup Dialog */}
-      <dialog
-        id="review-dialog"
-        ref={reviewDialogRef}
-        onMouseDown={(e) => handleDialogMouseDown(e, reviewDialogRef)}
-        onClick={(e) => handleBackdropClick(e, reviewDialogRef)}
-        aria-labelledby="review-title"
+      <ResponsiveModal
+        isOpen={reviewOpen}
+        onClose={closeReviewModal}
+        dialogId="review-dialog"
+        labelledBy="review-title"
+        sheetTitle="Your quotation"
+        sheetClassName="form-sheet review-sheet"
+        sheetFooter={
+          <div className="form-sheet-actions review-sheet-actions">{reviewActions}</div>
+        }
       >
+        {(isPhone) => (
+          <>
+        {isPhone ? (
+          <p className="sheet-subtitle">Review decorations selected for each of your events.</p>
+        ) : (
         <div className="review-dialog-header">
           <div
             style={{
@@ -2375,6 +2488,7 @@ export default function ClientHomePage() {
             </button>
           </div>
         </div>
+        )}
 
         <div className="review-dialog-body">
           {plannedEvents.length === 0 || totalItemCount === 0 ? (
@@ -2556,83 +2670,35 @@ export default function ClientHomePage() {
           )}
         </div>
 
-        <div className="acts review-dialog-footer">
-          <button
-            type="button"
-            className="pill review-clear-btn"
-            onClick={clearAllQuotes}
-            disabled={totalItemCount === 0}
-          >
-            Clear all
-          </button>
-          <button type="button" className="pill review-close-btn" onClick={closeReviewModal}>
-            Close
-          </button>
-          {nextEmptyReviewEvent ? (
-            <div
-              className="review-send-btn-wrap"
-              style={{
-                display: "inline-flex",
-                flexDirection: "column",
-                alignItems: "flex-end",
-                gap: 4,
-              }}
-            >
-              <button
-                type="button"
-                className="pill pri review-primary-btn"
-                onClick={() => handleNextEmptyEventClick(nextEmptyReviewEvent.name)}
-                disabled={totalItemCount === 0}
-              >
-                Next: {nextEmptyReviewEvent.name} →
-              </button>
-              <button
-                type="button"
-                className="review-skip-link"
-                onClick={() => handleSkipAndSend(nextEmptyReviewEvent.name)}
-                style={{
-                  background: "none",
-                  border: 0,
-                  padding: "2px 0",
-                  color: "var(--mute)",
-                  fontSize: "11px",
-                  textDecoration: "underline",
-                  cursor: "pointer",
-                }}
-              >
-                Skip {nextEmptyReviewEvent.name} and send
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="pill pri review-primary-btn"
-              onClick={openContactModal}
-              disabled={totalItemCount === 0 || selectedCompanyCount === 0}
-            >
-              {quotationSendBtnLabel}
-            </button>
-          )}
-        </div>
-      </dialog>
+        {!isPhone && <div className="acts review-dialog-footer">{reviewActions}</div>}
+          </>
+        )}
+      </ResponsiveModal>
 
       {/* 7. Contact Popup Dialog */}
-      <dialog
-        id="contact-dialog"
-        ref={contactDialogRef}
-        onMouseDown={(e) => handleDialogMouseDown(e, contactDialogRef)}
-        onClick={(e) => handleBackdropClick(e, contactDialogRef)}
-        onClose={() => setBuyNowItem(null)}
-        aria-labelledby="contact-title"
+      <ResponsiveModal
+        isOpen={contactOpen}
+        onClose={dismissContactModal}
+        dialogId="contact-dialog"
+        labelledBy="contact-title"
+        sheetTitle={
+          isSubmitted ? "Thank you!" : buyNowItem ? "Buy this decoration" : "Finalize inquiry"
+        }
+        sheetClassName="form-sheet contact-sheet"
+        sheetFooter={<div className="form-sheet-actions">{contactActions}</div>}
+        repositionInputs
       >
-        {isSubmitted ? (
+        {(isPhone) =>
+        isSubmitted ? (
           <div style={{ textAlign: "center", padding: "24px 8px" }}>
             <div style={{ fontSize: 52, marginBottom: 12 }} role="img" aria-label="Celebration">
               🎉
             </div>
-            <h2 className="serif" style={{ fontSize: 32, margin: "0 0 10px" }}>
-              Thank you!
-            </h2>
+            {!isPhone && (
+              <h2 className="serif" style={{ fontSize: 32, margin: "0 0 10px" }}>
+                Thank you!
+              </h2>
+            )}
             <p
               style={{
                 color: "var(--mute)",
@@ -2646,15 +2712,15 @@ export default function ClientHomePage() {
                 ? `We have received your order for ${buyNowItem.t}. Our team will come to you with your quotation.`
                 : "We have received your request. Our team will come to you with your quotation."}
             </p>
-            <button type="button" className="pill pri" onClick={closeContactModal}>
-              Close
-            </button>
+            {!isPhone && contactActions}
           </div>
         ) : (
           <>
-            <h2 className="serif" id="contact-title">
-              {buyNowItem ? "Buy this decoration" : "Finalize inquiry"}
-            </h2>
+            {!isPhone && (
+              <h2 className="serif" id="contact-title">
+                {buyNowItem ? "Buy this decoration" : "Finalize inquiry"}
+              </h2>
+            )}
             {buyNowItem && (
               <div className="buy-summary">
                 <img src={photoOf(buyNowItem)} alt={buyNowItem.t} />
@@ -2688,7 +2754,12 @@ export default function ClientHomePage() {
               selected companies.
             </div>
 
-            <form ref={contactFormRef} onSubmit={handleContactSubmit} className="contact-form">
+            <form
+              id={contactFormId}
+              ref={contactFormRef}
+              onSubmit={handleContactSubmit}
+              className="contact-form"
+            >
               <div>
                 <label htmlFor="contact-name">Your name *</label>
                 <input
@@ -2808,27 +2879,12 @@ export default function ClientHomePage() {
                 </p>
               )}
 
-              <div className="acts">
-                <button type="button" className="pill" onClick={closeContactModal}>
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="pill pri"
-                  disabled={
-                    isSending ||
-                    !contactName.trim() ||
-                    !isValidPhone(contactPhone) ||
-                    !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp)
-                  }
-                >
-                  {isSending ? "Sending…" : buyNowItem ? "Place order" : "Send request"}
-                </button>
-              </div>
+              {!isPhone && <div className="acts">{contactActions}</div>}
             </form>
           </>
-        )}
-      </dialog>
+        )
+        }
+      </ResponsiveModal>
 
       {/* Mobile Filter Bottom Sheet Modal */}
       <FilterBottomSheet

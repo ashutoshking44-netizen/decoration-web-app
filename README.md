@@ -125,19 +125,13 @@ Database setup: apply the SQL in `supabase/migrations/` to your Supabase project
 
 Defined in `.env` (never commit it; `.env.example` is the template). Only `VITE_*` variables are exposed to the browser.
 
-| Variable                                                  | Required | Description                                                                                    |
-| --------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`                                       | Yes      | Supabase project URL                                                                           |
-| `VITE_SUPABASE_ANON_KEY`                                  | Yes      | Supabase anon / publishable key (public by design; access is controlled by Row Level Security) |
-| `VITE_API_URL`                                            | No       | Base URL of the optional legacy local API (`server/index.mjs`), used only as a fallback        |
-| `API_PORT`                                                | No       | Port for the optional local API (`bun run api`), default `4000`                                |
-| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | No       | Direct Postgres connection for `bun run migrate` / `bun run seed` (server-side only)           |
+| Variable                 | Required | Description                                                                                    |
+| ------------------------ | -------- | ---------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`      | Yes      | Supabase project URL                                                                           |
+| `VITE_SUPABASE_ANON_KEY` | Yes      | Supabase anon / publishable key (public by design; access is controlled by Row Level Security) |
+| `VITE_API_URL`           | No       | Base URL of the optional legacy local API (`server/index.mjs`), used only as a fallback        |
 
-Rules:
-
-- Keep every key, password and URL in `.env`; never hard-code them in source files.
-- Never put the Supabase `service_role` key in any `VITE_*` variable or frontend code. Edge functions read it from Supabase secrets (`SUPABASE_SERVICE_ROLE_KEY`).
-- When you add a new variable, add it (without a real value) to `.env.example` and to this table.
+Never put the Supabase `service_role` key in any `VITE_*` variable or frontend code.
 
 ## Commands
 
@@ -173,7 +167,6 @@ The CI workflow (`.github/workflows/ci.yml`) runs typecheck, tests, lint and bui
 
 ## Build and deployment
 
-- **Lovable:** pushing to the connected branch updates the Lovable project, which handles hosting.
 - **Manual build:** `bun run build` outputs a Nitro server in `.output/` (Cloudflare Workers target by default; see `.output/server/wrangler.json`).
 - **Docker:** see [`docker/README.md`](docker/README.md) — `docker compose -f docker/docker-compose.yml up --build`.
 - **Supabase edge function:** `supabase functions deploy upload-photo`.

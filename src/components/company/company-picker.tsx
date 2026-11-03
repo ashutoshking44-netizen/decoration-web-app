@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Building2, Loader2, Plus, Search } from "lucide-react";
+import { ArrowLeft, Building2, Loader2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,78 +53,98 @@ export function CompanyPicker() {
     navigate({ to: "/setup" });
   };
 
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate({ to: "/" });
+    }
+  };
+
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center gap-6 px-5 py-10">
-      <div className="space-y-2 text-center flex flex-col items-center">
-        <img
-          src="/assets/app-logo.png"
-          alt="Decoration Portal"
-          className="size-16 rounded-2xl object-cover shadow-soft border border-border/80 mb-1"
-        />
-        <h1 className="text-3xl font-semibold">Choose your company</h1>
-        <p className="text-sm text-muted-foreground">
-          Search for your company and open it, or set up a new one.
-        </p>
-      </div>
+    <div className="relative min-h-screen w-full">
+      <button
+        type="button"
+        onClick={handleBack}
+        aria-label="Back"
+        title="Back"
+        className="fixed left-4 top-4 z-20 flex size-10 items-center justify-center rounded-full border border-border/80 bg-background/95 text-foreground shadow-soft backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-accent hover:scale-105 active:scale-95 sm:left-6 sm:top-6"
+      >
+        <ArrowLeft className="size-5" />
+      </button>
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by company, owner or city"
-          className="h-11 pl-9"
-          aria-label="Search companies"
-        />
-      </div>
+      <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center gap-6 px-5 py-10">
+        <div className="space-y-2 text-center flex flex-col items-center">
+          <img
+            src="/assets/app-logo.png"
+            alt="Decoration Portal"
+            className="size-16 rounded-2xl object-cover shadow-soft border border-border/80 mb-1"
+          />
+          <h1 className="text-3xl font-semibold">Choose your company</h1>
+          <p className="text-sm text-muted-foreground">
+            Search for your company and open it, or set up a new one.
+          </p>
+        </div>
 
-      <div className="space-y-2">
-        {loading ? (
-          <p className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Loading companies…
-          </p>
-        ) : failed ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            Could not load companies. Check your connection and reload.
-          </p>
-        ) : shown.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            {companies.length === 0
-              ? "No company has been set up yet."
-              : "No company matches your search."}
-          </p>
-        ) : (
-          shown.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              disabled={opening !== null}
-              onClick={() => open(c.id)}
-              className="flex w-full cursor-pointer items-center gap-3 rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-accent disabled:cursor-wait disabled:opacity-70"
-            >
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                {opening === c.id ? (
-                  <Loader2 className="size-5 animate-spin" />
-                ) : (
-                  <Building2 className="size-5" />
-                )}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{c.name}</span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {[c.ownerName, c.city].filter(Boolean).join(" · ")}
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by company, owner or city"
+            className="h-11 pl-9"
+            aria-label="Search companies"
+          />
+        </div>
+
+        <div className="space-y-2">
+          {loading ? (
+            <p className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Loading companies…
+            </p>
+          ) : failed ? (
+            <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+              Could not load companies. Check your connection and reload.
+            </p>
+          ) : shown.length === 0 ? (
+            <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+              {companies.length === 0
+                ? "No company has been set up yet."
+                : "No company matches your search."}
+            </p>
+          ) : (
+            shown.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                disabled={opening !== null}
+                onClick={() => open(c.id)}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-accent disabled:cursor-wait disabled:opacity-70"
+              >
+                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                  {opening === c.id ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <Building2 className="size-5" />
+                  )}
                 </span>
-              </span>
-            </button>
-          ))
-        )}
-      </div>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{c.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {[c.ownerName, c.city].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+              </button>
+            ))
+          )}
+        </div>
 
-      <Button variant="outline" className="gap-2" onClick={addNew}>
-        <Plus className="size-4" />
-        Set up a new company
-      </Button>
+        <Button variant="outline" className="gap-2" onClick={addNew}>
+          <Plus className="size-4" />
+          Set up a new company
+        </Button>
+      </div>
     </div>
   );
 }

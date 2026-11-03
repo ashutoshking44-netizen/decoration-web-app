@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from "react";
 import type { DecorationItem } from "../ClientHomePage";
 import type { StoredQuotation } from "../lib/quotationStorage";
 import { QuotationCompanyPicker, type CompanyPickerGroup } from "./QuotationCompanyPicker";
+import { ResponsiveModal } from "./ResponsiveModal";
 
 export interface ReviewQuotationModalProps {
   isOpen: boolean;
@@ -35,58 +36,6 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
   onClearAll,
   onProceedToInquiry,
 }) => {
-  const dialogRef = useRef<HTMLDialogElement | null>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    if (isOpen) {
-      if (!dialog.open) {
-        dialog.showModal();
-      }
-    } else {
-      if (dialog.open) {
-        dialog.close();
-      }
-    }
-  }, [isOpen]);
-
-  const mouseDownOnBackdropRef = useRef(false);
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDialogElement>) => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (e.target === dialog) {
-      const rect = dialog.getBoundingClientRect();
-      const isOutside =
-        e.clientY < rect.top ||
-        e.clientY > rect.top + rect.height ||
-        e.clientX < rect.left ||
-        e.clientX > rect.left + rect.width;
-      mouseDownOnBackdropRef.current = isOutside;
-    } else {
-      mouseDownOnBackdropRef.current = false;
-    }
-  };
-
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
-    const dialog = dialogRef.current;
-    if (!dialog || !dialog.open) return;
-    if (!mouseDownOnBackdropRef.current) return;
-    if (e.target === dialog) {
-      const rect = dialog.getBoundingClientRect();
-      const isOutside =
-        e.clientY < rect.top ||
-        e.clientY > rect.top + rect.height ||
-        e.clientX < rect.left ||
-        e.clientX > rect.left + rect.width;
-      if (isOutside) {
-        onClose();
-      }
-    }
-  };
-
   const { plannedEvents, eventQuotes } = quotation;
 
   const totalItemCount = Object.values(eventQuotes).reduce(
@@ -145,18 +94,45 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
     });
   };
 
+  const actions = (
+    <>
+      <button
+        type="button"
+        className="pill review-clear-btn"
+        onClick={onClearAll}
+        disabled={totalItemCount === 0}
+      >
+        Clear all
+      </button>
+      <button type="button" className="pill review-close-btn" onClick={onClose}>
+        Close
+      </button>
+      <button
+        type="button"
+        className="pill pri review-primary-btn"
+        onClick={() => onProceedToInquiry(selectedCompanies)}
+        disabled={totalItemCount === 0 || selectedCompanies.length === 0}
+      >
+        Send request
+      </button>
+    </>
+  );
+
   return (
-    <dialog
-      id="review-dialog"
-      ref={dialogRef}
-      onMouseDown={handleMouseDown}
-      onClick={handleBackdropClick}
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-      aria-labelledby="review-title"
+    <ResponsiveModal
+      isOpen={isOpen}
+      onClose={onClose}
+      dialogId="review-dialog"
+      labelledBy="review-title"
+      sheetTitle="Your quotation"
+      sheetClassName="form-sheet review-sheet"
+      sheetFooter={<div className="form-sheet-actions review-sheet-actions">{actions}</div>}
     >
+      {(isPhone) => (
+        <>
+      {isPhone ? (
+        <p className="sheet-subtitle">Review decorations selected for each of your events.</p>
+      ) : (
       <div className="review-dialog-header">
         <div
           style={{
@@ -205,6 +181,7 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
           </button>
         </div>
       </div>
+      )}
 
       <div className="review-dialog-body">
         {plannedEvents.length === 0 || totalItemCount === 0 ? (
@@ -366,27 +343,9 @@ export const ReviewQuotationModal: React.FC<ReviewQuotationModalProps> = ({
         )}
       </div>
 
-      <div className="acts review-dialog-footer">
-        <button
-          type="button"
-          className="pill review-clear-btn"
-          onClick={onClearAll}
-          disabled={totalItemCount === 0}
-        >
-          Clear all
-        </button>
-        <button type="button" className="pill review-close-btn" onClick={onClose}>
-          Close
-        </button>
-        <button
-          type="button"
-          className="pill pri review-primary-btn"
-          onClick={() => onProceedToInquiry(selectedCompanies)}
-          disabled={totalItemCount === 0 || selectedCompanies.length === 0}
-        >
-          Send request
-        </button>
-      </div>
-    </dialog>
+      {!isPhone && <div className="acts review-dialog-footer">{actions}</div>}
+        </>
+      )}
+    </ResponsiveModal>
   );
 };
