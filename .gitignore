@@ -4,19 +4,29 @@ node_modules/
 # Build / generated output
 .output/
 dist/
+dist-ssr/
 build/
+.vinxi/
+.tanstack/**
+.nitro/
 
 # Deployment / tooling generated files
 .wrangler/
-.tanstack/
+.dev.vars
 
 # Environment variables / secrets
 .env
 .env.*
+.env.local
+.env.*.local
 !.env.example
+
+# Shared API data (uploads + db)
+server/data/
 
 # Logs
 *.log
+logs/
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
@@ -25,14 +35,20 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
+# IDE & Editor files
+.vscode/*
+!.vscode/extensions.json
 .idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # Temporary files
 *.tmp
 *.temp
-# Old Git history backup
 **/.git-old-backup/
 
+# Supabase CLI temp files
 supabase/.temp/

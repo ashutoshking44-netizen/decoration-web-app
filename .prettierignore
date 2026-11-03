@@ -1,0 +1,15 @@
+node_modules
+dist
+.output
+.vinxi
+pnpm-lock.yaml
+package-lock.json
+bun.lock
+routeTree.gen.ts
+
+# Design-tool icon bundles (generated)
+icon
+
+# Guardrail / agent config: never auto-format
+.agents
+.claude

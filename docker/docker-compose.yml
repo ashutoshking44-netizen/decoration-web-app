@@ -1,0 +1,57 @@
+version: "3.8"
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: development
+    container_name: decoration-web
+    restart: unless-stopped
+    ports:
+      - "5174:5174"
+    environment:
+      - NODE_ENV=development
+      - PORT=5174
+      - VITE_API_URL=http://localhost:4000
+    env_file:
+      - ../.env
+    volumes:
+      - ../src:/app/src
+      - ../public:/app/public
+      - ../index.html:/app/index.html
+      - ../vite.config.ts:/app/vite.config.ts
+      - /app/node_modules
+    command: ["bun", "run", "dev", "--host", "0.0.0.0", "--port", "5174"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: base
+    container_name: decoration-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - NODE_ENV=development
+    env_file:
+      - ../.env
+    volumes:
+      - ../server:/app/server
+      - /app/node_modules
+    command: ["node", "server/index.mjs"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+networks:
+  default:
+    name: decoration-network

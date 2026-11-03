@@ -1,0 +1,19 @@
+{
+  "version": "1.0.0",
+  "project": "decoration-web-app",
+  "database": {
+    "engine": "postgresql",
+    "version": "15",
+    "schemas": ["public", "storage"],
+    "tables": [
+      "public.decorations",
+      "public.enquiries",
+      "public.booked_clients",
+      "public.company_profiles",
+      "public.payment_qrs"
+    ],
+    "storage_buckets": ["decoration-images"]
+  },
+  "migrations": ["20261012000000_init_schema.sql", "20261012000001_storage.sql"],
+  "edge_functions": ["upload-photo"]
+}
