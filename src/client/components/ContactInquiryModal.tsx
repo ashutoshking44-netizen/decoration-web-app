@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useId, useState } from "react";
 import { submitEnquiry } from "../api";
+import { ResponsiveModal } from "./ResponsiveModal";
 import {
   saveStoredQuotation,
   type PlannedEvent,
@@ -44,7 +45,7 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
   selectedCompanies = [],
   onSuccess,
 }) => {
-  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const formId = useId();
 
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -61,63 +62,6 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    if (isOpen) {
-      if (!dialog.open) {
-        try {
-          dialog.showModal();
-        } catch {
-          /* already open */
-        }
-      }
-    } else {
-      if (dialog.open) {
-        dialog.close();
-      }
-    }
-  }, [isOpen]);
-
-  const mouseDownOnBackdropRef = useRef(false);
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDialogElement>) => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (e.target === dialog) {
-      const rect = dialog.getBoundingClientRect();
-      const isOutside =
-        e.clientY < rect.top ||
-        e.clientY > rect.top + rect.height ||
-        e.clientX < rect.left ||
-        e.clientX > rect.left + rect.width;
-      mouseDownOnBackdropRef.current = isOutside;
-    } else {
-      mouseDownOnBackdropRef.current = false;
-    }
-  };
-
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
-    const dialog = dialogRef.current;
-    if (!dialog || !dialog.open) return;
-
-    // Prevent closing if mouse drag started inside the dialog (e.g. resizing textarea or selecting text)
-    if (!mouseDownOnBackdropRef.current) return;
-
-    if (e.target === dialog) {
-      const rect = dialog.getBoundingClientRect();
-      const isOutside =
-        e.clientY < rect.top ||
-        e.clientY > rect.top + rect.height ||
-        e.clientX < rect.left ||
-        e.clientX > rect.left + rect.width;
-      if (isOutside) {
-        handleClose();
-      }
-    }
-  };
 
   const isValidPhone = (val: string): boolean => {
     const trimmed = val.trim();
@@ -297,26 +241,55 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
     onClose();
   };
 
+  const submitDisabled =
+    isSending ||
+    !contactName.trim() ||
+    !isValidPhone(contactPhone) ||
+    !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp);
+
+  // Cancel + submit; the submit button targets the form by id so it also works
+  // from the bottom sheet's pinned footer (outside the <form>).
+  const formActions = (
+    <>
+      <button type="button" className="pill" onClick={handleClose}>
+        Cancel
+      </button>
+      <button type="submit" form={formId} className="pill pri" disabled={submitDisabled}>
+        {isSending ? "Sending…" : buyNowItem ? "Place order" : "Send request"}
+      </button>
+    </>
+  );
+
+  const closeButton = (
+    <button type="button" className="pill pri" onClick={handleClose}>
+      Close
+    </button>
+  );
+
   return (
-    <dialog
-      id="contact-dialog"
-      ref={dialogRef}
-      onMouseDown={handleMouseDown}
-      onClick={handleBackdropClick}
-      onCancel={(e) => {
-        e.preventDefault();
-        handleClose();
-      }}
-      aria-labelledby="contact-title"
+    <ResponsiveModal
+      isOpen={isOpen}
+      onClose={handleClose}
+      dialogId="contact-dialog"
+      labelledBy="contact-title"
+      sheetTitle={
+        isSubmitted ? "Thank you!" : buyNowItem ? "Buy this decoration" : "Finalize inquiry"
+      }
+      sheetClassName="form-sheet contact-sheet"
+      sheetFooter={<div className="form-sheet-actions">{isSubmitted ? closeButton : formActions}</div>}
+      repositionInputs
     >
-      {isSubmitted ? (
+      {(isPhone) =>
+        isSubmitted ? (
         <div style={{ textAlign: "center", padding: "24px 8px" }}>
           <div style={{ fontSize: 52, marginBottom: 12 }} role="img" aria-label="Celebration">
             🎉
           </div>
-          <h2 className="serif" style={{ fontSize: 32, margin: "0 0 10px" }}>
-            Thank you!
-          </h2>
+          {!isPhone && (
+            <h2 className="serif" style={{ fontSize: 32, margin: "0 0 10px" }}>
+              Thank you!
+            </h2>
+          )}
           <p
             style={{
               color: "var(--mute)",
@@ -330,15 +303,15 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
               ? `We have received your order for ${buyNowItem.t}. Our team will come to you with your quotation.`
               : "We have received your request. Our team will come to you with your quotation."}
           </p>
-          <button type="button" className="pill pri" onClick={handleClose}>
-            Close
-          </button>
+          {!isPhone && closeButton}
         </div>
       ) : (
         <>
-          <h2 className="serif" id="contact-title">
-            {buyNowItem ? "Buy this decoration" : "Finalize inquiry"}
-          </h2>
+          {!isPhone && (
+            <h2 className="serif" id="contact-title">
+              {buyNowItem ? "Buy this decoration" : "Finalize inquiry"}
+            </h2>
+          )}
 
           {buyNowItem && (
             <div className="buy-summary">
@@ -376,7 +349,7 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
             companies.
           </div>
 
-          <form onSubmit={handleSubmit} className="contact-form">
+          <form id={formId} onSubmit={handleSubmit} className="contact-form">
             <div>
               <label htmlFor="contact-name">Your name *</label>
               <input
@@ -506,27 +479,12 @@ export const ContactInquiryModal: React.FC<ContactInquiryModalProps> = ({
               </p>
             )}
 
-            <div className="acts">
-              <button type="button" className="pill" onClick={handleClose}>
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="pill pri"
-                disabled={
-                  isSending ||
-                  !contactName.trim() ||
-                  !isValidPhone(contactPhone) ||
-                  !isValidPhone(whatsappSameAsPhone ? contactPhone : contactWhatsapp)
-                }
-              >
-                {isSending ? "Sending…" : buyNowItem ? "Place order" : "Send request"}
-              </button>
-            </div>
+            {!isPhone && <div className="acts">{formActions}</div>}
           </form>
         </>
-      )}
-    </dialog>
+      )
+      }
+    </ResponsiveModal>
   );
 };
 

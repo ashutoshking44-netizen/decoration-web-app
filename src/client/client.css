@@ -3150,7 +3150,11 @@ body.bottom-sheet-scroll-locked {
 @media (max-width: 768px) {
   /* 1. Mobile Header (Back Button + Centered Search Pill + Menu Button on single line) */
   .mobile-header {
-    position: relative;
+    /* Sticks to the top while scrolling. The category chips bar below is also
+       sticky at top: 0 with a higher z-index (40), so when it reaches the top
+       it slides over and takes this header's place. */
+    position: sticky;
+    top: 0;
     z-index: 20;
     background: #ffffff;
     border-bottom: 1px solid var(--line);
@@ -4800,4 +4804,90 @@ dialog#contact-dialog input:disabled {
 .filters-empty-icon {
   font-size: 36px;
   margin-bottom: 8px;
+}
+
+/* ── Popups as phone bottom sheets (components/ResponsiveModal.tsx) ──
+   Contact / Buy-now and Review quotation reuse the shared BottomSheet
+   (.filter-sheet), so they look and behave exactly like Filters / Sort / Plan:
+   slide up, drag the handle down to close, tap outside to close. */
+.filter-sheet.form-sheet {
+  max-width: 560px;
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+.form-sheet .sheet-body {
+  display: block;
+  padding: 14px 0 8px;
+}
+.sheet-subtitle {
+  margin: 0 0 12px;
+  color: var(--mute);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.form-sheet .contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.form-sheet input:not([type="checkbox"]),
+.form-sheet select,
+.form-sheet textarea {
+  font-size: 16px; /* prevents iOS zoom on focus */
+  min-height: 46px;
+  box-sizing: border-box;
+}
+.form-sheet textarea {
+  min-height: 84px;
+}
+.form-sheet .contact-checkbox-row {
+  margin: 10px 0 6px;
+}
+.form-sheet .contact-checkbox-label {
+  font-size: 13.5px !important;
+}
+.form-sheet .contact-checkbox-label input[type="checkbox"] {
+  width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+}
+
+/* Pinned action row (same as the Plan sheet) */
+.form-sheet-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.form-sheet-actions .pill {
+  flex: 1 1 0;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.form-sheet-actions .pill.pri {
+  flex: 1.6 1 0;
+}
+
+/* Review sheet: primary action full width on top, Clear all + Close below */
+.form-sheet-actions.review-sheet-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+}
+.review-sheet-actions > .review-primary-btn,
+.review-sheet-actions > .review-send-btn-wrap {
+  grid-column: 1 / -1;
+  order: -1;
+}
+.review-sheet-actions .review-send-btn-wrap {
+  display: flex !important;
+  align-items: stretch !important;
+}
+.review-sheet-actions .review-send-btn-wrap .review-primary-btn {
+  width: 100%;
+}
+.review-sheet-actions .review-skip-link {
+  align-self: center;
 }
